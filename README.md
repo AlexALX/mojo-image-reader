@@ -11,7 +11,7 @@ Currently, the library features a robust **JPEG decoding pipeline** along with P
   * Progressive JPEG decoding.
   * Full Chroma Subsampling support: **4:4:4, 4:2:2, 4:2:0, and 4:2:0v**.
 * **Performance & Memory Optimizations**:
-  * Built with raw pointer arithmetic (`UnsafePointer`, `unsafe_offset`, `unsafe_load`, `unsafe_store`) to completely bypass bounds-checking overhead in hot loops.
+  * Built with raw pointer arithmetic (`Pointer`) to completely bypass bounds-checking and lifetime tracking overhead in hot loops.bounds-checking overhead in hot loops.
   * LLVM auto-vectorization friendly pipeline for dequantization and IDCT blocks.
 * **Flexible Export & Interoperability**:
   * **PPM Exporter**: Supports 8-bit and 12/16-bit integer color depths (`P6`).
