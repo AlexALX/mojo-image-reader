@@ -18,6 +18,12 @@ Currently, the library features a robust **JPEG decoding pipeline** along with P
   * **PFM Exporter**: 32-bit Float High Dynamic Range (HDR) export (`PF` format, Bottom-to-Top, Little-Endian).
   * **NumPy Bridge**: Direct zero-copy data exchange with the Python NumPy ecosystem.
 
+## 📌 Notes
+
+* **AI-Assisted**: Developed with AI acceleration for structuring and optimization.
+* **Lineage**: Architecture and structure directly adapted from Expression 2 (E2) code within the [ALX PC](https://github.com/AlexALX/wiremod_e2_os) project.
+* **Purpose**: Built as a portfolio showcase and a useful tool for the Mojo ecosystem.
+
 ---
 
 ## 📂 Project Structure
