@@ -50,7 +50,7 @@ def parse_cli_args() raises -> CLIConfig:
             if precision != 8 and precision != 12 and precision != 16:
                 raise Error("Unsupported precision value: " + val_str + ".\nSupported values are: 8, 12, 16")
         elif arg.startswith("--format="):
-            var output_format = arg[byte=9:]
+            output_format = arg[byte=9:]
 
             if output_format!="ppm" and output_format!="pfm":
                 raise Error("Unsupported format: " + output_format + ".\nSupported formats are: ppm, pfm")
