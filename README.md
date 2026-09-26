@@ -10,6 +10,7 @@ Currently, the library features a robust **JPEG decoding pipeline** along with P
   * Baseline (8-bit and 12-bit precision SOF1).
   * Progressive JPEG decoding.
   * Full Chroma Subsampling support: **4:4:4, 4:2:2, 4:2:0, and 4:2:0v**.
+  * Grayscale JPEG (1-component) support.
 * **Performance & Memory Optimizations**:
   * Built with raw pointer arithmetic (`Pointer`) to completely bypass bounds-checking and lifetime tracking overhead in hot loops.
   * LLVM auto-vectorization friendly pipeline for dequantization and IDCT blocks.
@@ -99,6 +100,7 @@ mojo -I . tests/jpg_reader/test_assemble.mojo
 
 - [x] **JPEG Decoder**
   - [x] Baseline (8/12-bit) precision support
+  - [x] Grayscale JPEG (1-component) support
   - [x] Progressive JPEG decoding
   - [x] Chroma Subsampling modes (4:4:4, 4:2:2, 4:2:0, 4:2:0v)
 

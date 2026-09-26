@@ -115,9 +115,6 @@ struct JpegParser:
         self.dirty_blocks = Dict[Int, Bool]()
 
         self.components = List[JpegComponent]()
-        for _ in range(4):
-            self.components.append(JpegComponent())
-
         self.frame_components = List[Int]()
 
         # Populate the JPEG standard zigzag mapping matrix
@@ -219,10 +216,13 @@ struct JpegParser:
         var num_components = reader.u8()
         self.component_count = num_components
 
+        for _ in range(num_components+1):
+            self.components.append(JpegComponent())
+
         self.progressive = True if marker == 0xC2 else False
 
         comptime if DEBUG:
-            print("Parsed SOF0: Size =", self.width, "x", self.height, "| Components =", num_components)
+            print("Parsed "+self.jpg_marker_name(0xFF00 | marker)+": Size =", self.width, "x", self.height, "| Components =", num_components)
 
         for _ in range(num_components):
             var comp_id = reader.u8()

@@ -71,15 +71,23 @@ struct ImageDrawer:
         var height = parser.height
         ref components = parser.components
 
-        # Retrieve Cb (index 2) and Cr (index 3) metadata
-        # Assuming 1-based indexing structure for components
-        ref cb_comp = components[2]
-        ref cr_comp = components[3]
+        var is_grayscale = parser.component_count == 1
 
-        var cb_w = cb_comp.width
-        var cb_h = cb_comp.height
-        var cr_w = cr_comp.width
-        var cr_h = cr_comp.height
+        var cb_w = 0
+        var cb_h = 0
+        var cr_w = 0
+        var cr_h = 0
+
+        if not is_grayscale:
+            # Retrieve Cb (index 2) and Cr (index 3) metadata
+            # Assuming 1-based indexing structure for components
+            ref cb_comp = components[2]
+            ref cr_comp = components[3]
+
+            cb_w = cb_comp.width
+            cb_h = cb_comp.height
+            cr_w = cr_comp.width
+            cr_h = cr_comp.height
 
         var level_shift = Float64(parser.level_shift)
 
@@ -90,25 +98,41 @@ struct ImageDrawer:
         var buffer = ImageBuffer(width, height, 3, output_precision)
 
         if buffer.is_16bit:
-            ImageDrawer.process_image[True](
-                buffer, width, height,
-                planes_y, planes_cb, planes_cr,
-                cb_w, cb_h, cr_w, cr_h,
-                level_shift, diff, max_val
-            )
+            if is_grayscale:
+                ImageDrawer.process_image[True, True](
+                    buffer, width, height,
+                    planes_y, planes_cb, planes_cr,
+                    cb_w, cb_h, cr_w, cr_h,
+                    level_shift, diff, max_val
+                )
+            else:
+                ImageDrawer.process_image[True, False](
+                    buffer, width, height,
+                    planes_y, planes_cb, planes_cr,
+                    cb_w, cb_h, cr_w, cr_h,
+                    level_shift, diff, max_val
+                )
         else:
-            ImageDrawer.process_image[False](
-                buffer, width, height,
-                planes_y, planes_cb, planes_cr,
-                cb_w, cb_h, cr_w, cr_h,
-                level_shift, diff, max_val
-            )
+            if is_grayscale:
+                ImageDrawer.process_image[False, True](
+                    buffer, width, height,
+                    planes_y, planes_cb, planes_cr,
+                    cb_w, cb_h, cr_w, cr_h,
+                    level_shift, diff, max_val
+                )
+            else:
+                ImageDrawer.process_image[False, False](
+                    buffer, width, height,
+                    planes_y, planes_cb, planes_cr,
+                    cb_w, cb_h, cr_w, cr_h,
+                    level_shift, diff, max_val
+                )
 
         return buffer^
 
     @staticmethod
     @always_inline
-    def process_image[is_16bit: Bool](
+    def process_image[is_16bit: Bool, is_grayscale: Bool](
         mut buffer: ImageBuffer,
         width: Int,
         height: Int,
@@ -123,10 +147,10 @@ struct ImageDrawer:
     ):
         # Loop through every pixel on the target image grid
         for y in range(height):
-            var cb_y = (y * cb_h) / height
-            var cr_y = (y * cr_h) / height
-            var cb_row_offset = cb_y * cb_w
-            var cr_row_offset = cr_y * cr_w
+            var cb_y = 0 if is_grayscale else (y * cb_h) / height
+            var cr_y = 0 if is_grayscale else (y * cr_h) / height
+            var cb_row_offset = 0 if is_grayscale else cb_y * cb_w
+            var cr_row_offset = 0 if is_grayscale else cr_y * cr_w
 
             for x in range(width):
                 var y_idx = y * width + x
@@ -134,47 +158,68 @@ struct ImageDrawer:
                 # Fetch Luma value directly (already clamped/level-shifted during IDCT)
                 var y_val = planes_y[y_idx]
 
-                # Map pixel coordinates to chroma planes considering subsampling scale
-                var cb_x = (x * cb_w) / width
-                var cr_x = (x * cr_w) / width
+                if is_grayscale:
+                    var r = y_val
+                    var scaled_r: Int
+                    if diff > 0:
+                        scaled_r = Int(r) << diff
+                    elif diff < 0:
+                        scaled_r = Int(r) >> (-diff)
+                    else:
+                        scaled_r = Int(r)
 
-                var cb_idx = cb_row_offset + cb_x
-                var cr_idx = cr_row_offset + cr_x
+                    var final_r = min(max_val, max(0, Int(scaled_r)))
 
-                var cb_val = (planes_cb[cb_idx] - level_shift)
-                var cr_val = (planes_cr[cr_idx] - level_shift)
-
-                # Standard JPEG YCbCr to RGB conversion formulas
-                var r = y_val + 1.402 * cr_val
-                var g = y_val - 0.344136 * cb_val - 0.714136 * cr_val
-                var b = y_val + 1.772 * cb_val
-
-                var scaled_r: Int
-                var scaled_g: Int
-                var scaled_b: Int
-
-                if diff > 0:
-                    scaled_r = Int(r) << diff
-                    scaled_g = Int(g) << diff
-                    scaled_b = Int(b) << diff
-                elif diff < 0:
-                    scaled_r = Int(r) >> (-diff)
-                    scaled_g = Int(g) >> (-diff)
-                    scaled_b = Int(b) >> (-diff)
+                    if is_16bit:
+                        buffer.data_u16.append(UInt16(final_r))
+                        buffer.data_u16.append(UInt16(final_r))
+                        buffer.data_u16.append(UInt16(final_r))
+                    else:
+                        buffer.data_u8.append(UInt8(final_r))
+                        buffer.data_u8.append(UInt8(final_r))
+                        buffer.data_u8.append(UInt8(final_r))
                 else:
-                    scaled_r = Int(r)
-                    scaled_g = Int(g)
-                    scaled_b = Int(b)
+                    # Map pixel coordinates to chroma planes considering subsampling scale
+                    var cb_x = (x * cb_w) / width
+                    var cr_x = (x * cr_w) / width
 
-                var final_r = min(max_val, max(0, Int(scaled_r)))
-                var final_g = min(max_val, max(0, Int(scaled_g)))
-                var final_b = min(max_val, max(0, Int(scaled_b)))
+                    var cb_idx = cb_row_offset + cb_x
+                    var cr_idx = cr_row_offset + cr_x
 
-                if is_16bit:
-                    buffer.data_u16.append(UInt16(final_r))
-                    buffer.data_u16.append(UInt16(final_g))
-                    buffer.data_u16.append(UInt16(final_b))
-                else:
-                    buffer.data_u8.append(UInt8(final_r))
-                    buffer.data_u8.append(UInt8(final_g))
-                    buffer.data_u8.append(UInt8(final_b))
+                    var cb_val = (planes_cb[cb_idx] - level_shift)
+                    var cr_val = (planes_cr[cr_idx] - level_shift)
+
+                    # Standard JPEG YCbCr to RGB conversion formulas
+                    var r = y_val + 1.402 * cr_val
+                    var g = y_val - 0.344136 * cb_val - 0.714136 * cr_val
+                    var b = y_val + 1.772 * cb_val
+
+                    var scaled_r: Int
+                    var scaled_g: Int
+                    var scaled_b: Int
+
+                    if diff > 0:
+                        scaled_r = Int(r) << diff
+                        scaled_g = Int(g) << diff
+                        scaled_b = Int(b) << diff
+                    elif diff < 0:
+                        scaled_r = Int(r) >> (-diff)
+                        scaled_g = Int(g) >> (-diff)
+                        scaled_b = Int(b) >> (-diff)
+                    else:
+                        scaled_r = Int(r)
+                        scaled_g = Int(g)
+                        scaled_b = Int(b)
+
+                    var final_r = min(max_val, max(0, Int(scaled_r)))
+                    var final_g = min(max_val, max(0, Int(scaled_g)))
+                    var final_b = min(max_val, max(0, Int(scaled_b)))
+
+                    if is_16bit:
+                        buffer.data_u16.append(UInt16(final_r))
+                        buffer.data_u16.append(UInt16(final_g))
+                        buffer.data_u16.append(UInt16(final_b))
+                    else:
+                        buffer.data_u8.append(UInt8(final_r))
+                        buffer.data_u8.append(UInt8(final_g))
+                        buffer.data_u8.append(UInt8(final_b))

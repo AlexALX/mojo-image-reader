@@ -85,15 +85,16 @@ struct JpgDecoder:
         for _ in range(comp_y_w * comp_y_h):
             planes_y.append(0.0)
 
-        var comp_cb_w = parser.components[2].width
-        var comp_cb_h = parser.components[2].height
-        for _ in range(comp_cb_w * comp_cb_h):
-            planes_cb.append(0.0)
+        if parser.component_count>1:
+            var comp_cb_w = parser.components[2].width
+            var comp_cb_h = parser.components[2].height
+            for _ in range(comp_cb_w * comp_cb_h):
+                planes_cb.append(0.0)
 
-        var comp_cr_w = parser.components[3].width
-        var comp_cr_h = parser.components[3].height
-        for _ in range(comp_cr_w * comp_cr_h):
-            planes_cr.append(0.0)
+            var comp_cr_w = parser.components[3].width
+            var comp_cr_h = parser.components[3].height
+            for _ in range(comp_cr_w * comp_cr_h):
+                planes_cr.append(0.0)
 
         var mcu_since_restart = 0
         var restart_interval = parser.restart_interval
@@ -169,10 +170,6 @@ struct JpgDecoder:
                     )
 
             mcu_since_restart += 1
-
-            if mcu_idx % 100 == 0 and mcu_idx > 0:
-                comptime if DEBUG:
-                    print("Processed MCU:", mcu_idx, "/", parser.mcu_count)
 
         comptime if DEBUG:
             print("=== ENTROPY DECODING & IDCT FINISHED SUCCESSFULLY ===")
