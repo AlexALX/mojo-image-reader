@@ -15,7 +15,7 @@ Currently, the library features a robust **JPEG decoding pipeline** along with P
   * LLVM auto-vectorization friendly pipeline for dequantization and IDCT blocks.
 * **Flexible Export & Interoperability**:
   * **PPM Exporter**: Supports 8-bit and 12/16-bit integer color depths (`P6`).
-  * **PFM Exporter**: 32-bit Float High Dynamic Range (HDR) export (`PF` format, Bottom-to-Top, Little-Endian).
+  * **PFM Exporter**: 32-bit Float High Dynamic Range (HDR) export (`PF` format, Little-Endian).
   * **NumPy Bridge**: Direct zero-copy data exchange with the Python NumPy ecosystem.
 
 ## 📌 Notes
