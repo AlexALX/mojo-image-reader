@@ -318,8 +318,10 @@ struct JpgDecoder:
         var planes_cr = List[Float64]()
 
         for _ in range(parser.components[1].width * parser.components[1].height): planes_y.append(0.0)
-        for _ in range(parser.components[2].width * parser.components[2].height): planes_cb.append(0.0)
-        for _ in range(parser.components[3].width * parser.components[3].height): planes_cr.append(0.0)
+
+        if parser.component_count>1:
+            for _ in range(parser.components[2].width * parser.components[2].height): planes_cb.append(0.0)
+            for _ in range(parser.components[3].width * parser.components[3].height): planes_cr.append(0.0)
 
         var idct_processor = IDCT()
         var level_shift = Float64(parser.level_shift)
