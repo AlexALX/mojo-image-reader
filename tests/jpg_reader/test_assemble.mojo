@@ -57,7 +57,7 @@ def test_jpg_assemble_3() raises:
 
         # Call the real block-to-plane copying method for component ID = 1 (Y)
         ImageDrawer.copy_block_to_plane(
-            block, 1, 0, b_idx, components, mcus_per_row, planes_y, planes_cb, planes_cr
+            block, 0, b_idx, components[1], mcus_per_row, planes_y
         )
 
     # Emulate Cb block (value 50)
@@ -65,7 +65,7 @@ def test_jpg_assemble_3() raises:
     for _ in range(64):
         cb_block.append(50.0)
     ImageDrawer.copy_block_to_plane(
-        cb_block, 2, 0, 0, components, mcus_per_row, planes_y, planes_cb, planes_cr
+        cb_block, 0, 0, components[2], mcus_per_row, planes_cb
     )
 
     # Emulate Cr block (value 100)
@@ -73,7 +73,7 @@ def test_jpg_assemble_3() raises:
     for _ in range(64):
         cr_block.append(100.0)
     ImageDrawer.copy_block_to_plane(
-        cr_block, 3, 0, 0, components, mcus_per_row, planes_y, planes_cb, planes_cr
+        cr_block, 0, 0, components[3], mcus_per_row, planes_cr
     )
 
     # 3. Assert exact parity with assemble_2.txt / assemble_3.txt stage assertions

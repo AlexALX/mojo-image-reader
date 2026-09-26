@@ -3,6 +3,10 @@ from std.math import cos, sqrt
 struct IDCT:
     var idct_cos: List[Float64]
     var sqrt_05: Float64
+    # Pre-allocated workspace buffers to eliminate heap allocations per block
+    var temp_buf: List[Float64]
+    var row_buf: List[Float64]
+    var col_buf: List[Float64]
 
     def __init__(out self):
         self.sqrt_05 = sqrt(0.5)
@@ -12,6 +16,16 @@ struct IDCT:
             for u in range(8):
                 var val = cos((2.0 * Float64(x) + 1.0) * Float64(u) * 3.141592653589793 / 16.0)
                 self.idct_cos.append(val)
+
+        # Initialize persistent workspace buffers once
+        self.temp_buf = List[Float64]()
+        self.temp_buf.resize(64, 0.0)
+
+        self.row_buf = List[Float64]()
+        self.row_buf.resize(8, 0.0)
+
+        self.col_buf = List[Float64]()
+        self.col_buf.resize(8, 0.0)
 
     def perform_idct(mut self, mut block: List[Float64], level_shift: Float64, output_shift: Float64) -> Bool:
         """
@@ -33,38 +47,38 @@ struct IDCT:
                 block[i] = dc_val
             return True
 
-        var temp = List[Float64](capacity=64)
-        for _ in range(64):
-            temp.append(0.0)
+        # Reuse pre-allocated temp buffer instead of creating a new List per block
+        for i in range(64):
+            self.temp_buf[i] = 0.0
 
         # 2. Process Rows (1D IDCT on Rows, dividing sum by 2)
         for y in range(8):
             var row_offset = y * 8
 
-            var b = List[Float64](capacity=8)
-            b.append(block[row_offset + 0] * self.sqrt_05)
+            # Reuse row buffer by direct indexing assignments
+            self.row_buf[0] = block[row_offset + 0] * self.sqrt_05
             for i in range(1, 8):
-                b.append(block[row_offset + i])
+                self.row_buf[i] = block[row_offset + i]
 
             for x in range(8):
                 var sum_val = 0.0
                 var base_idx = x * 8
                 for u in range(8):
-                    sum_val += b[u] * self.idct_cos[base_idx + u]
-                temp[row_offset + x] = sum_val / 2.0
+                    sum_val += self.row_buf[u] * self.idct_cos[base_idx + u]
+                self.temp_buf[row_offset + x] = sum_val / 2.0
 
         # 3. Process Columns (1D IDCT on Cols)
         for x in range(8):
-            var t = List[Float64](capacity=8)
-            t.append(temp[x + 0] * self.sqrt_05)
+            # Reuse column buffer by direct indexing assignments
+            self.col_buf[0] = self.temp_buf[x + 0] * self.sqrt_05
             for i in range(1, 8):
-                t.append(temp[x + i * 8])
+                self.col_buf[i] = self.temp_buf[x + i * 8]
 
             for y in range(8):
                 var sum_val = 0.0
                 var base_idx = y * 8
                 for v in range(8):
-                    sum_val += t[v] * self.idct_cos[base_idx + v]
+                    sum_val += self.col_buf[v] * self.idct_cos[base_idx + v]
 
                 # Full 2D synthesis without extra column division
                 var val = (sum_val / 2.0) + level_shift

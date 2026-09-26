@@ -6,18 +6,6 @@ from image_reader.jpg_reader.idct import IDCT
 from image_reader.jpg_reader.draw import ImageDrawer
 from image_reader.buffer import ImageBuffer
 
-struct QuantizationTable:
-    var values: List[Int]
-
-    def __init__(out self):
-        self.values = List[Int]()
-        for _ in range(64):
-            self.values.append(1)
-
-    def set_values(mut self, new_values: List[Int]):
-        for i in range(min(len(new_values), 64)):
-            self.values[i] = new_values[i]
-
 struct Quantization:
     @always_inline
     @staticmethod
@@ -69,32 +57,25 @@ struct JpgDecoder:
         for _ in range(len(parser.components)):
             prev_dcs.append(0)
 
-        var raw_block = List[Int]()
-        var block_output = List[Float64]()
-        for _ in range(64):
-            raw_block.append(0)
-            block_output.append(0.0)
+        var raw_block = List[Int](length=64,fill=0)
+        var block_output = List[Float64](length=64,fill=0.0)
 
         # Initialize planes for Y, Cb, Cr based on component specific dimensions (1-based component indexing)
-        var planes_y = List[Float64]()
         var planes_cb = List[Float64]()
         var planes_cr = List[Float64]()
 
         var comp_y_w = parser.components[1].width
         var comp_y_h = parser.components[1].height
-        for _ in range(comp_y_w * comp_y_h):
-            planes_y.append(0.0)
+        var planes_y = List[Float64](length=comp_y_w * comp_y_h, fill=0.0)
 
         if parser.component_count>1:
             var comp_cb_w = parser.components[2].width
             var comp_cb_h = parser.components[2].height
-            for _ in range(comp_cb_w * comp_cb_h):
-                planes_cb.append(0.0)
+            planes_cb.resize(comp_cb_w * comp_cb_h, 0.0)
 
             var comp_cr_w = parser.components[3].width
             var comp_cr_h = parser.components[3].height
-            for _ in range(comp_cr_w * comp_cr_h):
-                planes_cr.append(0.0)
+            planes_cr.resize(comp_cr_w * comp_cr_h, 0.0)
 
         var mcu_since_restart = 0
         var restart_interval = parser.restart_interval
@@ -157,17 +138,21 @@ struct JpgDecoder:
                     _ = idct_processor.perform_idct(block_output, level_shift, 0.0)
 
                     # 4. Delegate plane placement back to ImageDrawer
-                    ImageDrawer.copy_block_to_plane(
-                        block_output,
-                        comp_id,
-                        mcu_idx,
-                        block_num,
-                        parser.components,
-                        mcus_per_row,
-                        planes_y,
-                        planes_cb,
-                        planes_cr
-                    )
+                    if comp_id == 1:
+                        ImageDrawer.copy_block_to_plane(
+                            block_output, mcu_idx, block_num,
+                            parser.components[comp_id], mcus_per_row, planes_y
+                        )
+                    elif comp_id == 2:
+                        ImageDrawer.copy_block_to_plane(
+                            block_output, mcu_idx, block_num,
+                            parser.components[comp_id], mcus_per_row, planes_cb
+                        )
+                    else:
+                        ImageDrawer.copy_block_to_plane(
+                            block_output, mcu_idx, block_num,
+                            parser.components[comp_id], mcus_per_row, planes_cr
+                        )
 
             mcu_since_restart += 1
 
@@ -254,8 +239,7 @@ struct JpgDecoder:
 
                         # Ensure safe bounds
                         while index >= len(parser.coefficients[comp_id]):
-                            var blk = List[Int]()
-                            for _ in range(64): blk.append(0)
+                            var blk = List[Int](length=64, fill=0)
                             parser.coefficients[comp_id].append(blk^)
 
                         if is_dc:
@@ -313,19 +297,20 @@ struct JpgDecoder:
 
 
         # Reconstruct planes & IDCT
-        var planes_y = List[Float64]()
+        var planes_y = List[Float64](length=parser.components[1].width * parser.components[1].height, fill=0.0)
         var planes_cb = List[Float64]()
         var planes_cr = List[Float64]()
 
-        for _ in range(parser.components[1].width * parser.components[1].height): planes_y.append(0.0)
-
         if parser.component_count>1:
-            for _ in range(parser.components[2].width * parser.components[2].height): planes_cb.append(0.0)
-            for _ in range(parser.components[3].width * parser.components[3].height): planes_cr.append(0.0)
+            planes_cb.resize(parser.components[2].width * parser.components[2].height,0.0)
+            planes_cr.resize(parser.components[3].width * parser.components[3].height,0.0)
 
         var idct_processor = IDCT()
         var level_shift = Float64(parser.level_shift)
         var mcus_per_row = parser.mcu_x
+
+        var block_output = List[Float64]()
+        block_output.resize(64,0.0)
 
         for comp_id in range(1, len(parser.components)):
             ref comp_info = parser.components[comp_id]
@@ -338,21 +323,31 @@ struct JpgDecoder:
             var blocks_per_mcu = h_factor * v_factor
 
             for mcu_idx in range(parser.mcu_count):
-                for b_num in range(blocks_per_mcu):
-                    var blk_idx = mcu_idx * blocks_per_mcu + b_num
+                for block_num in range(blocks_per_mcu):
+                    var blk_idx = mcu_idx * blocks_per_mcu + block_num
                     if blk_idx >= len(blocks): continue
                     ref raw_blk = blocks[blk_idx]
 
-                    var block_output = List[Float64]()
-                    for _ in range(64): block_output.append(0.0)
+                    for i in range(64): block_output[i] = 0.0
 
                     Quantization.dequantize_block(raw_blk, q_table, block_output)
                     _ = idct_processor.perform_idct(block_output, level_shift, 0.0)
 
-                    ImageDrawer.copy_block_to_plane(
-                        block_output, comp_id, mcu_idx, b_num,
-                        parser.components, mcus_per_row, planes_y, planes_cb, planes_cr
-                    )
+                    if comp_id == 1:
+                        ImageDrawer.copy_block_to_plane(
+                            block_output, mcu_idx, block_num,
+                            parser.components[comp_id], mcus_per_row, planes_y
+                        )
+                    elif comp_id == 2:
+                        ImageDrawer.copy_block_to_plane(
+                            block_output, mcu_idx, block_num,
+                            parser.components[comp_id], mcus_per_row, planes_cb
+                        )
+                    else:
+                        ImageDrawer.copy_block_to_plane(
+                            block_output, mcu_idx, block_num,
+                            parser.components[comp_id], mcus_per_row, planes_cr
+                        )
 
         return ImageDrawer.assemble_to_buffer(self.parser, planes_y, planes_cb, planes_cr)
 

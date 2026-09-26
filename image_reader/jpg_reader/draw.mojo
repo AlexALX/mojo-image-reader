@@ -3,22 +3,18 @@ from image_reader.buffer import ImageBuffer
 
 struct ImageDrawer:
     @staticmethod
+    @always_inline
     def copy_block_to_plane(
         ref block: List[Float64],
-        component_id: Int,
         mcu_idx: Int,
         block_num: Int,
-        ref components: List[JpegComponent],
+        ref comp: JpegComponent,
         mcus_per_row: Int,
-        mut planes_y: List[Float64],
-        mut planes_cb: List[Float64],
-        mut planes_cr: List[Float64]
+        mut plane: List[Float64]
     ):
         """
-        Copies an 8x8 block into the correct position of the component plane.
+        Copies an 8x8 block into the correct position of the component plane (optimized).
         """
-
-        ref comp = components[component_id]
         var comp_w = comp.width
         var comp_h = comp.height
         var h_factor = comp.h
@@ -33,6 +29,9 @@ struct ImageDrawer:
         var final_x = (mcu_x * h_factor + block_x_in_mcu) * 8
         var final_y = (mcu_y * v_factor + block_y_in_mcu) * 8
 
+        var p_block = block.unsafe_ptr()
+
+        var p_plane = plane.unsafe_ptr()
         var block_index = 0
         for by in range(8):
             var py = final_y + by
@@ -41,19 +40,9 @@ struct ImageDrawer:
             var row_offset = py * comp_w
             for bx in range(8):
                 var px = final_x + bx
-                if px >= comp_w:
-                    block_index += 1
-                    continue
-
-                var val = block[block_index]
-
-                if component_id == 1:
-                    planes_y[row_offset + px] = val
-                elif component_id == 2:
-                    planes_cb[row_offset + px] = val
-                else:
-                    planes_cr[row_offset + px] = val
-
+                if px < comp_w:
+                    var val = p_block.unsafe_offset(block_index).unsafe_load()
+                    p_plane.unsafe_offset(row_offset + px).unsafe_store(val)
                 block_index += 1
 
     @staticmethod

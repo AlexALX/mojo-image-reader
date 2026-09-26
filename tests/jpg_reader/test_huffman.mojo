@@ -23,19 +23,7 @@ def test_huffman_build_simple() raises:
     assert_equal(ht.lookup[(2 << 16) + 3], 31)   # Symbol 30 + 1
     assert_equal(ht.lookup[(3 << 16) + 8], 41)   # Symbol 40 + 1
 
-    # Lookahead Cache Assertions (Packed: ((symbol + 1) << 8) | bits)
-    # 1-bit code '0' padded to 8 bits: matches 0x00..0x7F (128 entries)
-    assert_equal(ht.lookahead[0], (11 << 8) | 1)
-    assert_equal(ht.lookahead[127], (11 << 8) | 1)
-
-    # 2-bit code '2' (10 in binary) padded to 8 bits: matches 0x80..0xBF (64 entries)
-    assert_equal(ht.lookahead[128], (21 << 8) | 2)
-
-    # 2-bit code '3' (11 in binary) padded to 8 bits: matches 0xC0..0xFF (64 entries)
-    assert_equal(ht.lookahead[192], (31 << 8) | 2)
-
     assert_equal(ht.max_bits, 3)
-    assert_true(ht.is_defined)
 
 def main() raises:
     var runner = TestRunner()

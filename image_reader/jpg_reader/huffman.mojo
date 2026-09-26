@@ -8,8 +8,6 @@ struct HuffmanTable:
     var symbols: List[Int]         # Raw symbol values array
     var max_bits: Int              # Maximum code bit length encountered
     var lookup: Dict[Int, Int]     # Primary lookup table: key = (bits << 16) + code, value = symbol + 1
-    var lookahead: Dict[Int, Int]  # Fast 8-bit lookahead cache table
-    var is_defined: Bool
 
     def __init__(out self: Self, table_class: Int, id: Int):
         self.table_class = table_class
@@ -20,8 +18,6 @@ struct HuffmanTable:
         self.symbols = List[Int]()
         self.max_bits = 0
         self.lookup = Dict[Int, Int]()
-        self.lookahead = Dict[Int, Int]()
-        self.is_defined = False
 
     def build_huffman(mut self):
         """
@@ -49,17 +45,6 @@ struct HuffmanTable:
                 var lookup_key = (bits << 16) + code
                 self.lookup[lookup_key] = symbol + 1
 
-                # Lookahead optimization for codes up to 8 bits
-                if bits <= 8:
-                    var shift = 8 - bits
-                    var base_lookahead_code = code << shift
-                    var lookahead_count = 1 << shift
-
-                    for l in range(lookahead_count):
-                        var la_key = base_lookahead_code + l
-                        # Pack symbol and bit length into a single cached value
-                        self.lookahead[la_key] = ((symbol + 1) << 8) | bits
-
                 code += 1
                 index += 1
 
@@ -67,7 +52,6 @@ struct HuffmanTable:
             code <<= 1
 
         self.max_bits = max_bits_val
-        self.is_defined = True
 
     def huffman_read(self, mut bitreader: BitReader) raises -> Int:
         """
