@@ -6,7 +6,7 @@ Currently, the library features a robust **JPEG decoding pipeline** along with P
 
 ## 🚀 Key Features
 
-* **Comprehensive JPEG Support**:
+* **Core JPEG Support**:
   * Baseline (8-bit and 12-bit precision SOF1).
   * Progressive JPEG decoding.
   * Full Chroma Subsampling support: **4:4:4, 4:2:2, 4:2:0, and 4:2:0v**.
