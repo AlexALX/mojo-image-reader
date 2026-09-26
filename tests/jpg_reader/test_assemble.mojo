@@ -38,9 +38,9 @@ def test_jpg_assemble_3() raises:
     components.append(cr_comp^)
 
     # Initialize plane buffers with zeros based on component dimensions
-    var planes_y = List[Float64]()
-    var planes_cb = List[Float64]()
-    var planes_cr = List[Float64]()
+    var planes_y = List[Float32]()
+    var planes_cb = List[Float32]()
+    var planes_cr = List[Float32]()
 
     for _ in range(16 * 16):
         planes_y.append(0.0)
@@ -50,8 +50,8 @@ def test_jpg_assemble_3() raises:
 
     # 2. Emulate Y blocks (4 blocks for 2x2 MCU, values from 10 to 13)
     for b_idx in range(4):
-        var block = List[Float64]()
-        var fill_val = Float64(10 + b_idx)
+        var block = List[Float32]()
+        var fill_val = Float32(10 + b_idx)
         for _ in range(64):
             block.append(fill_val)
 
@@ -61,7 +61,7 @@ def test_jpg_assemble_3() raises:
         )
 
     # Emulate Cb block (value 50)
-    var cb_block = List[Float64]()
+    var cb_block = List[Float32]()
     for _ in range(64):
         cb_block.append(50.0)
     ImageDrawer.copy_block_to_plane(
@@ -69,7 +69,7 @@ def test_jpg_assemble_3() raises:
     )
 
     # Emulate Cr block (value 100)
-    var cr_block = List[Float64]()
+    var cr_block = List[Float32]()
     for _ in range(64):
         cr_block.append(100.0)
     ImageDrawer.copy_block_to_plane(

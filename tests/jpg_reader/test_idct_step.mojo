@@ -8,7 +8,7 @@ def test_idct_step() raises:
     Tests a 1D DCT block across 8 columns with specific AC coefficients.
     """
     var idct = IDCT()
-    var block = List[Float64]()
+    var block = List[Float32]()
     for _ in range(64):
         block.append(0.0)
 

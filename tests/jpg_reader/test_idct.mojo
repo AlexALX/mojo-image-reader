@@ -8,7 +8,7 @@ def test_idct1d() raises:
     Row[0] = 80, all other 0. Expected result = 80 * sqrt(0.5) / 2 = 28.284271247462.
     """
     var idct = IDCT()
-    var row = List[Float64]()
+    var row = List[Float32]()
     for _ in range(8):
         row.append(0.0)
     row[0] = 80.0
@@ -25,7 +25,7 @@ def test_idct_dc() raises:
     Expected output for all 64 elements = 138.
     """
     var idct = IDCT()
-    var block = List[Float64]()
+    var block = List[Float32]()
     for _ in range(64):
         block.append(0.0)
 
@@ -43,7 +43,7 @@ def test_idct_min() raises:
     Expected output clamped to 0 (-1024 / 8 + 128 = 0).
     """
     var idct = IDCT()
-    var block = List[Float64]()
+    var block = List[Float32]()
     for _ in range(64):
         block.append(0.0)
 
@@ -61,7 +61,7 @@ def test_idct_max() raises:
     Expected output clamped to 255 (1016 / 8 + 128 = 255).
     """
     var idct = IDCT()
-    var block = List[Float64]()
+    var block = List[Float32]()
     for _ in range(64):
         block.append(0.0)
 

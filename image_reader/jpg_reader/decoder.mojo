@@ -9,7 +9,7 @@ from image_reader.buffer import ImageBuffer
 struct Quantization:
     @always_inline
     @staticmethod
-    def dequantize_block(raw_block: List[Int], q_table: List[Int], mut out_block: List[Float64]):
+    def dequantize_block(raw_block: List[Int], q_table: List[Int], mut out_block: List[Float32]):
         """
         Dequantizes an 8x8 block in-place using the pre-ordered quantization table.
         """
@@ -21,7 +21,7 @@ struct Quantization:
             var raw_val = p_raw.unsafe_offset(i).unsafe_load()
             var q_val   = p_q.unsafe_offset(i).unsafe_load()
 
-            p_out.unsafe_offset(i).unsafe_store(Float64(raw_val * q_val))
+            p_out.unsafe_offset(i).unsafe_store(Float32(raw_val * q_val))
 
 struct JpgDecoder:
     var parser: JpegParser
@@ -58,15 +58,15 @@ struct JpgDecoder:
             prev_dcs.append(0)
 
         var raw_block = List[Int](length=64,fill=0)
-        var block_output = List[Float64](length=64,fill=0.0)
+        var block_output = List[Float32](length=64,fill=0.0)
 
         # Initialize planes for Y, Cb, Cr based on component specific dimensions (1-based component indexing)
-        var planes_cb = List[Float64]()
-        var planes_cr = List[Float64]()
+        var planes_cb = List[Float32]()
+        var planes_cr = List[Float32]()
 
         var comp_y_w = parser.components[1].width
         var comp_y_h = parser.components[1].height
-        var planes_y = List[Float64](length=comp_y_w * comp_y_h, fill=0.0)
+        var planes_y = List[Float32](length=comp_y_w * comp_y_h, fill=0.0)
 
         if parser.component_count>1:
             var comp_cb_w = parser.components[2].width
@@ -81,7 +81,7 @@ struct JpgDecoder:
         var restart_interval = parser.restart_interval
         var mcus_per_row = parser.mcu_x
 
-        var level_shift = Float64(parser.level_shift)
+        var level_shift = Float32(parser.level_shift)
 
         # Loop through all Minimum Coded Units (MCUs)
         for mcu_idx in range(parser.mcu_count):
@@ -297,19 +297,19 @@ struct JpgDecoder:
 
 
         # Reconstruct planes & IDCT
-        var planes_y = List[Float64](length=parser.components[1].width * parser.components[1].height, fill=0.0)
-        var planes_cb = List[Float64]()
-        var planes_cr = List[Float64]()
+        var planes_y = List[Float32](length=parser.components[1].width * parser.components[1].height, fill=0.0)
+        var planes_cb = List[Float32]()
+        var planes_cr = List[Float32]()
 
         if parser.component_count>1:
             planes_cb.resize(parser.components[2].width * parser.components[2].height,0.0)
             planes_cr.resize(parser.components[3].width * parser.components[3].height,0.0)
 
         var idct_processor = IDCT()
-        var level_shift = Float64(parser.level_shift)
+        var level_shift = Float32(parser.level_shift)
         var mcus_per_row = parser.mcu_x
 
-        var block_output = List[Float64]()
+        var block_output = List[Float32]()
         block_output.resize(64,0.0)
 
         for comp_id in range(1, len(parser.components)):

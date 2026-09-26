@@ -5,12 +5,12 @@ struct ImageDrawer:
     @staticmethod
     @always_inline
     def copy_block_to_plane(
-        ref block: List[Float64],
+        ref block: List[Float32],
         mcu_idx: Int,
         block_num: Int,
         ref comp: JpegComponent,
         mcus_per_row: Int,
-        mut plane: List[Float64]
+        mut plane: List[Float32]
     ):
         """
         Copies an 8x8 block into the correct position of the component plane (optimized).
@@ -48,9 +48,9 @@ struct ImageDrawer:
     @staticmethod
     def assemble_to_buffer(
         ref parser: JpegParser,
-        planes_y: List[Float64],
-        planes_cb: List[Float64],
-        planes_cr: List[Float64]
+        planes_y: List[Float32],
+        planes_cb: List[Float32],
+        planes_cr: List[Float32]
     ) raises -> ImageBuffer:
         """
         Assembles the final image from Y, Cb, Cr planes, handling chroma subsampling,
@@ -78,7 +78,7 @@ struct ImageDrawer:
             cr_w = cr_comp.width
             cr_h = cr_comp.height
 
-        var level_shift = Float64(parser.level_shift)
+        var level_shift = Float32(parser.level_shift)
 
         var max_val = (1 << parser.output_precision) - 1
         var diff = parser.precision_diff
@@ -125,12 +125,12 @@ struct ImageDrawer:
         mut buffer: ImageBuffer,
         width: Int,
         height: Int,
-        planes_y: List[Float64],
-        planes_cb: List[Float64],
-        planes_cr: List[Float64],
+        planes_y: List[Float32],
+        planes_cb: List[Float32],
+        planes_cr: List[Float32],
         cb_w: Int, cb_h: Int,
         cr_w: Int, cr_h: Int,
-        level_shift: Float64,
+        level_shift: Float32,
         diff: Int,
         max_val: Int
     ):

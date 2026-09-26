@@ -6,24 +6,24 @@ from tests.testslib import TestRunner
 def assert_near(val: Int, target: Int, tolerance: Int) -> Bool:
     return abs(val - target) <= tolerance
 
-def run_ycbcr_test(y: Float64, cb: Float64, cr: Float64, exp_r: Int, exp_g: Int, exp_b: Int, tol: Int) raises:
+def run_ycbcr_test(y: Float32, cb: Float32, cr: Float32, exp_r: Int, exp_g: Int, exp_b: Int, tol: Int) raises:
     # Test on a 1x1 pixel canvas
     var width = 1
     var height = 1
 
-    var planes_y = List[Float64]()
+    var planes_y = List[Float32]()
     planes_y.append(y)
 
-    var planes_cb = List[Float64]()
+    var planes_cb = List[Float32]()
     planes_cb.append(cb)
 
-    var planes_cr = List[Float64]()
+    var planes_cr = List[Float32]()
     planes_cr.append(cr)
 
     var buffer = ImageBuffer(width, height, 3, 8)
 
     # Process through the actual image drawing/conversion pipeline
-    ImageDrawer.process_image[False](
+    ImageDrawer.process_image[False, False](
         buffer, width, height,
         planes_y, planes_cb, planes_cr,
         width, height, width, height,
