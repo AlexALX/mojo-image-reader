@@ -27,56 +27,42 @@ struct PFMCodec:
         f.write(header)
 
         var max_val_f32 = Float32((1 << precision) - 1)
-
-        var total_samples = width * height * 3
-        var total_bytes = total_samples * 4
+        var total_bytes = width * height * 3 * 4
 
         var byte_stream = List[UInt8]()
         byte_stream.reserve(total_bytes)
 
-        # Raster data: standard Western reading order (left to right and top to bottom)
+        # Helper lambda/inline function to process and append a normalized float value
+        @__parameter
+        def append_float_pixel(val_raw: Float32):
+            var norm = val_raw / max_val_f32
+            var val_f32: Float32
+            if norm <= 0.04045:
+                val_f32 = norm / 12.92
+            else:
+                val_f32 = pow((norm + 0.055) / 1.055, Float32(2.4))
+
+            var raw_bytes = bitcast[DType.uint8, 4](val_f32)
+            byte_stream.append(raw_bytes[0])
+            byte_stream.append(raw_bytes[1])
+            byte_stream.append(raw_bytes[2])
+            byte_stream.append(raw_bytes[3])
+
+        # Raster data iteration loop
         if precision <= 8:
             var src_ptr = buffer.data_u8.unsafe_ptr()
             for y in range(height):
                 var row_start = y * width * 3
                 for x in range(width * 3):
-                    var val_u8 = src_ptr.unsafe_offset(row_start + x).unsafe_load()
-
-                    var norm = Float32(val_u8) / max_val_f32
-                    var val_f32: Float32
-                    if norm <= 0.04045:
-                        val_f32 = norm / 12.92
-                    else:
-                        val_f32 = pow((norm + 0.055) / 1.055, Float32(2.4))
-
-                    # Each sample is a 32-bit floating point number (4 consecutive bytes)
-                    var raw_bytes = bitcast[DType.uint8, 4](val_f32)
-
-                    byte_stream.append(raw_bytes[0])
-                    byte_stream.append(raw_bytes[1])
-                    byte_stream.append(raw_bytes[2])
-                    byte_stream.append(raw_bytes[3])
+                    var val = Float32(src_ptr.unsafe_offset(row_start + x).unsafe_load())
+                    append_float_pixel(val)
         else:
             var src_ptr = buffer.data_u16.unsafe_ptr()
             for y in range(height):
                 var row_start = y * width * 3
                 for x in range(width * 3):
-                    var val_u16 = src_ptr.unsafe_offset(row_start + x).unsafe_load()
-
-                    var norm = Float32(val_u16) / max_val_f32
-                    var val_f32: Float32
-                    if norm <= 0.04045:
-                        val_f32 = norm / 12.92
-                    else:
-                        val_f32 = pow((norm + 0.055) / 1.055, Float32(2.4))
-
-                    # Each sample is a 32-bit floating point number (4 consecutive bytes)
-                    var raw_bytes = bitcast[DType.uint8, 4](val_f32)
-
-                    byte_stream.append(raw_bytes[0])
-                    byte_stream.append(raw_bytes[1])
-                    byte_stream.append(raw_bytes[2])
-                    byte_stream.append(raw_bytes[3])
+                    var val = Float32(src_ptr.unsafe_offset(row_start + x).unsafe_load())
+                    append_float_pixel(val)
 
         f.write_bytes(byte_stream)
         f.close()
