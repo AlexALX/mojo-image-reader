@@ -9,11 +9,10 @@ from image_reader.buffer import ImageBuffer
 struct Quantization:
     @always_inline
     @staticmethod
-    def dequantize_block(raw_block: List[Int], q_table: List[Int], mut out_block: List[Float32]):
+    def dequantize_block[origin: MutOrigin](p_raw: Pointer[Int16, origin], q_table: List[Int], mut out_block: List[Float32]):
         """
         Dequantizes an 8x8 block in-place using SIMD acceleration and explicit pointers.
         """
-        var p_raw = raw_block.unsafe_ptr()
         var p_q = q_table.unsafe_ptr()
         var p_out = out_block.unsafe_ptr()
 
@@ -31,6 +30,8 @@ struct JpgDecoder:
     var parser: JpegParser
     var mcu_cols: Int
     var mcu_rows: Int
+    var max_blocks_per_comp: Int
+    var coefficients: List[Int16]
 
     def __init__(out self, var parser: JpegParser):
         """
@@ -38,6 +39,8 @@ struct JpgDecoder:
         """
         self.mcu_cols = 0
         self.mcu_rows = 0
+        self.max_blocks_per_comp = 0
+        self.coefficients = List[Int16]()
         self.parser = parser^
 
     def decode_image(mut self) raises -> ImageBuffer:
@@ -57,11 +60,11 @@ struct JpgDecoder:
         ref parser = self.parser
         var idct_processor = IDCT()
 
-        var prev_dcs = List[Int]()
-        for _ in range(len(parser.components)):
-            prev_dcs.append(0)
+        var prev_dcs = List[Int](length=len(parser.components), fill=0)
 
-        var raw_block = List[Int](length=64,fill=0)
+        var raw_block = List[Int16](length=64,fill=0)
+        var p_raw = raw_block.unsafe_ptr()
+
         var block_output = List[Float32](length=64,fill=0.0)
 
         # Initialize planes for Y, Cb, Cr based on component specific dimensions (1-based component indexing)
@@ -125,7 +128,7 @@ struct JpgDecoder:
                     )
 
                     prev_dcs[comp_id] = updated_dc
-                    raw_block[0] = updated_dc
+                    raw_block[0] = Int16(updated_dc)
 
                     for i in range(1, 64):
                         raw_block[i] = 0
@@ -137,12 +140,12 @@ struct JpgDecoder:
                         parser.huffman_ac[ac_tbl_id],
                         parser.zigzag_map,
                         1, 63, 0,
-                        raw_block
+                        p_raw
                     )
 
                     # 3. Dequantize and perform IDCT into a temporary block buffer
                     ref q_table = parser.quantization_tables[qt_id]
-                    Quantization.dequantize_block(raw_block, q_table, block_output)
+                    Quantization.dequantize_block(p_raw, q_table, block_output)
 
                     # Perform IDCT (level shift / clamping handled during copy or color conversion)
                     _ = idct_processor.perform_idct(block_output, level_shift, 0.0)
@@ -184,28 +187,28 @@ struct JpgDecoder:
         ref parser = self.parser
 
         # Initialize global coefficient storage precisely to avoid dynamic allocations during scans
-        if len(parser.coefficients) == 0:
+        if len(self.coefficients) == 0:
+            var max_blocks = 0
             for comp_id in range(len(parser.components)):
-                var comp_blocks = List[List[Int]]()
                 ref comp_info = self.parser.components[comp_id]
-
-                # Calculate exact required blocks based on MCU grid and component factors
                 var h_factor = comp_info.h
                 var v_factor = comp_info.v
-                var max_blocks = parser.mcu_count * h_factor * v_factor
+                var m_blocks = parser.mcu_count * h_factor * v_factor
 
                 # Fallback to dimensions-based block count if MCU count is smaller
                 var blocks_x = (comp_info.width + 7) // 8
                 var blocks_y = (comp_info.height + 7) // 8
                 var total_blocks = blocks_x * blocks_y
-                if total_blocks < max_blocks:
-                    total_blocks = max_blocks
+                if total_blocks < m_blocks:
+                    total_blocks = m_blocks
+                if total_blocks > max_blocks:
+                    max_blocks = total_blocks
 
-                # Pre-allocate all blocks in advance to eliminate heap allocations in tight loops
-                for _ in range(total_blocks):
-                    var blk = List[Int](length=64, fill=0)
-                    comp_blocks.append(blk^)
-                parser.coefficients.append(comp_blocks^)
+            self.max_blocks_per_comp = max_blocks
+
+            # Pre-allocate all blocks in a single flat array
+            var total_size = len(parser.components) * self.max_blocks_per_comp * 64
+            self.coefficients.resize(length=total_size, fill=0)
 
         # Multi-scan progressive processing loop
         while True:
@@ -215,8 +218,7 @@ struct JpgDecoder:
             var al = parser.scan_al
             var is_dc = (ss == 0 and se == 0)
 
-            var prev_dcs = List[Int]()
-            for _ in range(len(parser.components)): prev_dcs.append(0)
+            var prev_dcs = List[Int](length=len(parser.components), fill=0)
 
             var is_single = parser.scan_is_single_component
             var scan_mcu_count = parser.scan_mcu_count
@@ -259,14 +261,17 @@ struct JpgDecoder:
                             index = scan_mcu * blocks_per_mcu + internal_offset
 
                         # Ensure safe bounds
-                        if index < len(parser.coefficients[comp_id]):
+                        if index < self.max_blocks_per_comp:
+                            var block_offset = (comp_id * self.max_blocks_per_comp + index) * 64
+                            var p_block = self.coefficients.unsafe_ptr().unsafe_offset(block_offset)
+
                             if is_dc:
                                 if ah == 0:
                                     var updated_dc = self.decode_dc_first(dc_tbl_id, prev_dcs[comp_id])
                                     prev_dcs[comp_id] = updated_dc
-                                    parser.coefficients[comp_id][index][0] = updated_dc << al
+                                    p_block.unsafe_store(Int16(updated_dc << al))
                                 else:
-                                    self.decode_dc_refinement(al, comp_id, index)
+                                    self.decode_dc_refinement(parser.bit_reader, al, p_block)
                             else:
                                 if ah == 0:
                                     _ = self.decode_ac_first(
@@ -275,10 +280,17 @@ struct JpgDecoder:
                                         parser.huffman_ac[ac_tbl_id],
                                         parser.zigzag_map,
                                         ss, se, al,
-                                        parser.coefficients[comp_id][index]
+                                        p_block
                                     )
                                 else:
-                                    _ = self.decode_ac_refinement(ac_tbl_id, ss, se, al, comp_id, index)
+                                    _ = self.decode_ac_refinement(
+                                        parser.bit_reader,
+                                        parser.scan_eob_run,
+                                        parser.huffman_ac[ac_tbl_id],
+                                        parser.zigzag_map,
+                                        ss, se, al,
+                                        p_block
+                                    )
 
             # Align stream after entropy scan block
             parser.bit_reader.align()
@@ -343,14 +355,14 @@ struct JpgDecoder:
         var level_shift = Float32(parser.level_shift)
         var mcus_per_row = parser.mcu_x
 
-        var block_output = List[Float32]()
-        block_output.resize(64,0.0)
+        var block_output = List[Float32](length=64, fill=0.0)
+
+        var p_coeff_base = self.coefficients.unsafe_ptr()
 
         for comp_id in range(1, len(parser.components)):
             ref comp_info = parser.components[comp_id]
             var qt_id = comp_info.qt
             ref q_table = parser.quantization_tables[qt_id]
-            ref blocks = parser.coefficients[comp_id]
 
             var h_factor = comp_info.h
             var v_factor = comp_info.v
@@ -359,12 +371,13 @@ struct JpgDecoder:
             for mcu_idx in range(parser.mcu_count):
                 for block_num in range(blocks_per_mcu):
                     var blk_idx = mcu_idx * blocks_per_mcu + block_num
-                    if blk_idx >= len(blocks): continue
-                    ref raw_blk = blocks[blk_idx]
+                    if blk_idx >= self.max_blocks_per_comp:
+                        continue
 
-                    for i in range(64): block_output[i] = 0.0
+                    var block_offset = (comp_id * self.max_blocks_per_comp + blk_idx) * 64
+                    var p_block = p_coeff_base.unsafe_offset(block_offset)
 
-                    Quantization.dequantize_block(raw_blk, q_table, block_output)
+                    Quantization.dequantize_block(p_block, q_table, block_output)
                     _ = idct_processor.perform_idct(block_output, level_shift, 0.0)
 
                     if comp_id == 1:
@@ -398,15 +411,15 @@ struct JpgDecoder:
         var dc = prev_dc + diff
         return dc
 
-    def decode_dc_refinement(mut self, al: Int, comp_id: Int, block_idx: Int) raises:
-        ref block = self.parser.coefficients[comp_id][block_idx]
-
-        var bit = self.parser.bit_reader.bit()
+    @staticmethod
+    def decode_dc_refinement[origin: MutOrigin](mut bit_reader: BitReader, al: Int, p_block: Pointer[Int16, origin]) raises:
+        var bit = bit_reader.bit()
         if bit > 0:
-            block[0] |= (1 << al)
+            var current_val = p_block.unsafe_load()
+            p_block.unsafe_store(current_val | Int16(1 << al))
 
     @staticmethod
-    def decode_ac_first(
+    def decode_ac_first[origin: MutOrigin](
         mut bit_reader: BitReader,
         mut scan_eob_run: Int,
         ref acht: HuffmanTable,
@@ -414,7 +427,7 @@ struct JpgDecoder:
         ss: Int,
         se: Int,
         al: Int,
-        mut block: List[Int]
+        p_block: Pointer[Int16, origin]
     ) raises -> Bool:
         if scan_eob_run > 0:
             scan_eob_run -= 1
@@ -446,68 +459,70 @@ struct JpgDecoder:
                 var val = bit_reader.bits(size)
                 if val < 0: return False
                 val = BitReader.extend(val, size)
-                block[zigzag_map[k]] = val << al
+                p_block.unsafe_offset(zigzag_map[k]).unsafe_store(Int16(val << al))
                 k += 1
         return True
 
-    def refine_coefficient(
-        mut self,
-        comp_id: Int,
-        block_idx: Int,
+    @staticmethod
+    @always_inline
+    def refine_coefficient[origin: MutOrigin](
+        mut bit_reader: BitReader,
         zigzag_idx: Int,
-        al: Int
+        al: Int,
+        p_block: Pointer[Int16, origin]
     ) raises -> Bool:
-        ref block = self.parser.coefficients[comp_id][block_idx]
+        var block_val = p_block.unsafe_offset(zigzag_idx).unsafe_load()
 
-        if block[zigzag_idx] == 0:
+        if block_val == 0:
             return True
 
-        var delta = 1 << al
+        var delta = Int16(1 << al)
 
-        if (block[zigzag_idx] & delta) != 0:
+        if (block_val & delta) != 0:
             return True
 
-        var bit = self.parser.bit_reader.bit()
+        var bit = bit_reader.bit()
         if bit < 0:
             return False
 
         if bit > 0:
-            if block[zigzag_idx] > 0:
-                block[zigzag_idx] += delta
+            if block_val > 0:
+                p_block.unsafe_offset(zigzag_idx).unsafe_store(block_val + delta)
             else:
-                block[zigzag_idx] -= delta
+                p_block.unsafe_offset(zigzag_idx).unsafe_store(block_val - delta)
 
         return True
 
-    def decode_ac_refinement(
-        mut self,
-        ac_tbl_id: Int,
+    @staticmethod
+    def decode_ac_refinement[origin: MutOrigin](
+        mut bit_reader: BitReader,
+        mut scan_eob_run: Int,
+        ref acht: HuffmanTable,
+        ref zigzag_map: List[Int],
         ss: Int,
         se: Int,
         al: Int,
-        comp_id: Int,
-        block_idx: Int
+        p_block: Pointer[Int16, origin]
     ) raises -> Bool:
-
         #
         # Existing EOB run
         #
-        if self.parser.scan_eob_run > 0:
+        if scan_eob_run > 0:
             var k = ss
             while k <= se:
-                var zigzag_idx = self.parser.zigzag_map[k]
+                var zigzag_idx = zigzag_map[k]
 
-                if not self.refine_coefficient(
-                    comp_id,
-                    block_idx,
+                if not JpgDecoder.refine_coefficient(
+                    bit_reader,
                     zigzag_idx,
-                    al
+                    al,
+                    p_block
                 ):
                     return False
 
                 k += 1
 
-            self.parser.scan_eob_run -= 1
+            scan_eob_run -= 1
             return True
 
         var k = ss
@@ -516,10 +531,7 @@ struct JpgDecoder:
         # Main AC refinement loop
         #
         while k <= se:
-
-            ref acht = self.parser.huffman_ac[ac_tbl_id]
-
-            var symbol = acht.huffman_read(self.parser.bit_reader)
+            var symbol = acht.huffman_read(bit_reader)
 
             if symbol < 0:
                 return False
@@ -539,15 +551,14 @@ struct JpgDecoder:
                     var current_run = 16
 
                     while k <= se and current_run > 0:
-                        ref block = self.parser.coefficients[comp_id][block_idx]
-                        var zigzag_idx = self.parser.zigzag_map[k]
+                        var zigzag_idx = zigzag_map[k]
 
-                        if block[zigzag_idx] != 0:
-                            if not self.refine_coefficient(
-                                comp_id,
-                                block_idx,
+                        if p_block.unsafe_offset(zigzag_idx).unsafe_load() != 0:
+                            if not JpgDecoder.refine_coefficient(
+                                bit_reader,
                                 zigzag_idx,
-                                al
+                                al,
+                                p_block
                             ):
                                 return False
                         else:
@@ -563,55 +574,53 @@ struct JpgDecoder:
                 var extra = 0
 
                 if run > 0:
-                    extra = self.parser.bit_reader.bits(run)
+                    extra = bit_reader.bits(run)
                     if extra < 0:
                         return False
 
                 var eob_count = (1 << run) + extra
 
                 while k <= se:
-                    ref block = self.parser.coefficients[comp_id][block_idx]
-                    var zigzag_idx = self.parser.zigzag_map[k]
+                    var zigzag_idx = zigzag_map[k]
 
-                    if block[zigzag_idx] != 0:
-                        if not self.refine_coefficient(
-                            comp_id,
-                            block_idx,
+                    if p_block.unsafe_offset(zigzag_idx).unsafe_load() != 0:
+                        if not JpgDecoder.refine_coefficient(
+                            bit_reader,
                             zigzag_idx,
-                            al
+                            al,
+                            p_block
                         ):
                             return False
 
                     k += 1
 
-                self.parser.scan_eob_run = eob_count - 1
+                scan_eob_run = eob_count - 1
                 return True
 
             #
             # Normal new coefficient
             #
-            var val_bits = self.parser.bit_reader.bits(size)
+            var val_bits = bit_reader.bits(size)
             if val_bits < 0:
                 return False
 
             var symbol_val = BitReader.extend(val_bits, size)
 
             while k <= se:
-                ref block = self.parser.coefficients[comp_id][block_idx]
-                var zigzag_idx = self.parser.zigzag_map[k]
+                var zigzag_idx = zigzag_map[k]
 
-                if block[zigzag_idx] != 0:
-                    if not self.refine_coefficient(
-                        comp_id,
-                        block_idx,
+                if p_block.unsafe_offset(zigzag_idx).unsafe_load() != 0:
+                    if not JpgDecoder.refine_coefficient(
+                        bit_reader,
                         zigzag_idx,
-                        al
+                        al,
+                        p_block
                     ):
                         return False
 
                 else:
                     if run == 0:
-                        block[zigzag_idx] = symbol_val << al
+                        p_block.unsafe_offset(zigzag_idx).unsafe_store(Int16(symbol_val << al))
                         k += 1
                         break # Break inner loop to read next huffman symbol
 

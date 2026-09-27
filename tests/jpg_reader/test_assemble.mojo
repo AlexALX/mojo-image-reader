@@ -3,7 +3,7 @@ from image_reader.jpg_reader.parser import JpegComponent
 from image_reader.jpg_reader.draw import ImageDrawer
 from tests.testslib import TestRunner
 
-def test_jpg_assemble_3() raises:
+def test_jpg_assemble() raises:
     # 1. Initialize image parameters 16x16 (matching setupAssembleTest)
     var width = 16
     var height = 16
@@ -76,7 +76,6 @@ def test_jpg_assemble_3() raises:
         cr_block, 0, 0, components[3], mcus_per_row, planes_cr
     )
 
-    # 3. Assert exact parity with assemble_2.txt / assemble_3.txt stage assertions
     assert_equal(Int(planes_y[0]), 10)     # Y[0]
     assert_equal(Int(planes_y[8]), 11)     # Y[8]
     assert_equal(Int(planes_y[128]), 12)   # Y[128]
@@ -86,5 +85,5 @@ def test_jpg_assemble_3() raises:
 
 def main() raises:
     var runner = TestRunner()
-    runner.run(test_jpg_assemble_3, "JPG ASSEMBLE PARITY TEST (assemble_2.txt / assemble_3.txt)")
+    runner.run(test_jpg_assemble, "JPG ASSEMBLE PARITY TEST")
     runner.results()

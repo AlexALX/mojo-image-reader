@@ -62,8 +62,6 @@ struct JpegParser:
     var scan_ah: Int
     var scan_al: Int
     var scan_count: Int
-    var coefficients: List[List[List[Int]]]
-    var dirty_blocks: Dict[Int, Bool]
 
     var components: List[JpegComponent]
     var frame_components: List[Int]
@@ -111,8 +109,6 @@ struct JpegParser:
         self.scan_ah = 0
         self.scan_al = 0
         self.scan_count = 0
-        self.coefficients = List[List[List[Int]]]()
-        self.dirty_blocks = Dict[Int, Bool]()
 
         self.components = List[JpegComponent]()
         self.frame_components = List[Int]()
@@ -131,8 +127,7 @@ struct JpegParser:
 
         self.quantization_tables = List[List[Int]]()
         for _ in range(4):
-            var empty_table = List[Int]()
-            for _ in range(64): empty_table.append(0)
+            var empty_table = List[Int](length=64,fill=0)
             self.quantization_tables.append(empty_table^)
 
         # Initialize storage for Huffman DC and AC tables
@@ -300,6 +295,7 @@ struct JpegParser:
                 ht.counts[i] = count
                 total_symbols += count
 
+            ht.symbols.reserve(total_symbols)
             # Read symbols for each length
             for _ in range(total_symbols):
                 var symbol = reader.u8()

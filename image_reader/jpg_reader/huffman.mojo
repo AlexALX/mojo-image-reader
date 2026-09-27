@@ -10,24 +10,27 @@ struct HuffmanTable:
 
     # Fast flat lookup table: index = 10-bit prefix, value = (symbol << 4) | length
     var fast_lookup: List[Int]
-    # Fallback dictionary for rare codes longer than 10 bits
-    var lookup: Dict[Int, Int]
+
+    # OPTIMIZATION: Flat lists replace Dict for fast fallback linear search
+    var fallback_keys: List[Int]
+    var fallback_vals: List[Int]
 
     def __init__(out self: Self, table_class: Int, id: Int):
         self.table_class = table_class
         self.id = id
-        self.counts = List[Int]()
-        for _ in range(16):
-            self.counts.append(0)
+        self.counts = List[Int](length=16, fill=0)
         self.symbols = List[Int]()
         self.max_bits = 0
         self.fast_lookup = List[Int](length=1024, fill=0)
-        self.lookup = Dict[Int, Int]()
+
+        # Pre-allocate to avoid reallocations. A JPEG Huffman table has max 256 symbols.
+        self.fallback_keys = List[Int](capacity=256)
+        self.fallback_vals = List[Int](capacity=256)
 
     def build_huffman(mut self):
         """
         Builds Huffman prefix codes and populates a 10-bit flat fast lookup table
-        along with a fallback dictionary for longer codes.
+        along with a flat list fallback for longer codes.
         """
         var code = 0
         var index = 0
@@ -59,7 +62,8 @@ struct HuffmanTable:
 
                 # Fallback for rare long codes or insufficient bits
                 var lookup_key = (bits << 16) + code
-                self.lookup[lookup_key] = symbol
+                self.fallback_keys.append(lookup_key)
+                self.fallback_vals.append(symbol)
 
                 code += 1
                 index += 1
@@ -73,6 +77,7 @@ struct HuffmanTable:
     def huffman_read(self, mut bitreader: BitReader) raises -> Int:
         """
         Reads a Huffman-encoded symbol in O(1) using the fast lookup table.
+        Uses a highly cache-friendly linear search for slow paths.
         """
 
         if bitreader.restart_marker:
@@ -122,7 +127,11 @@ struct HuffmanTable:
             code = (code << 1) | bit
 
             var key = (bits << 16) + code
-            if key in self.lookup:
-                return self.lookup[key]
+
+            # OPTIMIZATION: Linear search over contiguous memory replaces Dict hash lookup
+            var count = len(self.fallback_keys)
+            for i in range(count):
+                if self.fallback_keys[i] == key:
+                    return self.fallback_vals[i]
 
         return -100

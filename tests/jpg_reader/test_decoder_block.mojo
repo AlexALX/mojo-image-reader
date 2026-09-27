@@ -32,12 +32,12 @@ def test_decodeblock_dc() raises:
     var decoder = JpgDecoder(parser^)
     ref parser_ref = decoder.parser
 
-    var raw_block = List[Int]()
-    for _ in range(64):
-        raw_block.append(0)
+    var raw_block = List[Int16](length=64, fill=0)
 
     var updated_dc = decoder.decode_dc_first(0, 0)
-    raw_block[0] = updated_dc
+    raw_block[0] = Int16(updated_dc)
+
+    var raw_p = raw_block.unsafe_ptr()
 
     _ = decoder.decode_ac_first(
         parser_ref.bit_reader,
@@ -45,7 +45,7 @@ def test_decodeblock_dc() raises:
         parser_ref.huffman_ac[0],
         parser_ref.zigzag_map,
         1, 63, 0,
-        raw_block
+        raw_p
     )
 
     assert_equal(raw_block[0], 2)
@@ -80,12 +80,12 @@ def test_decodeblock_ac_only() raises:
     var decoder = JpgDecoder(parser^)
     ref parser_ref = decoder.parser
 
-    var raw_block = List[Int]()
-    for _ in range(64):
-        raw_block.append(0)
+    var raw_block = List[Int16](length=64, fill=0)
 
     var updated_dc = decoder.decode_dc_first(0, 0)
-    raw_block[0] = updated_dc
+    raw_block[0] = Int16(updated_dc)
+
+    var raw_p = raw_block.unsafe_ptr()
 
     _ = decoder.decode_ac_first(
         parser_ref.bit_reader,
@@ -93,7 +93,7 @@ def test_decodeblock_ac_only() raises:
         parser_ref.huffman_ac[0],
         parser_ref.zigzag_map,
         1, 63, 0,
-        raw_block
+        raw_p
     )
 
     assert_equal(raw_block[0], 0)
@@ -131,12 +131,12 @@ def test_decodeblock_mixed() raises:
     var decoder = JpgDecoder(parser^)
     ref parser_ref = decoder.parser
 
-    var raw_block = List[Int]()
-    for _ in range(64):
-        raw_block.append(0)
+    var raw_block = List[Int16](length=64, fill=0)
 
     var updated_dc = decoder.decode_dc_first(0, 0)
-    raw_block[0] = updated_dc
+    raw_block[0] = Int16(updated_dc)
+
+    var raw_p = raw_block.unsafe_ptr()
 
     _ = decoder.decode_ac_first(
         parser_ref.bit_reader,
@@ -144,7 +144,7 @@ def test_decodeblock_mixed() raises:
         parser_ref.huffman_ac[0],
         parser_ref.zigzag_map,
         1, 63, 0,
-        raw_block
+        raw_p
     )
 
     assert_equal(raw_block[0], 2)

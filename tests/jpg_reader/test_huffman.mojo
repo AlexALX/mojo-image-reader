@@ -2,6 +2,12 @@ from std.testing import assert_equal, assert_true
 from image_reader.jpg_reader.huffman import HuffmanTable
 from tests.testslib import TestRunner
 
+def get_fallback(ht: HuffmanTable, key: Int) -> Int:
+    for i in range(len(ht.fallback_keys)):
+        if ht.fallback_keys[i] == key:
+            return ht.fallback_vals[i]
+    return -1
+
 def test_huffman_build_simple() raises:
     """Tests Huffman table code generation and lookup structures."""
     var ht = HuffmanTable(0, 0)
@@ -34,7 +40,7 @@ def test_huffman_build_simple() raises:
     assert_equal(entry3 & 0x0F, 2)
     assert_equal(entry3 >> 4, 30)
 
-    assert_equal(ht.lookup[(3 << 16) + 8], 40)   # Symbol 40
+    assert_equal(get_fallback(ht, (3 << 16) + 8), 40)   # Symbol 40
 
     assert_equal(ht.max_bits, 3)
 

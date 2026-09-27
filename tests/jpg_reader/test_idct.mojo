@@ -1,6 +1,7 @@
 from std.testing import assert_almost_equal, assert_equal
 from image_reader.jpg_reader.idct import IDCT
 from tests.testslib import TestRunner
+from std.math import sqrt
 
 def test_idct1d() raises:
     """
@@ -13,7 +14,8 @@ def test_idct1d() raises:
         row.append(0.0)
     row[0] = 80.0
 
-    var b0 = row[0] * idct.sqrt_05
+    var sqrt_05 = Float32(sqrt(0.5))
+    var b0 = row[0] * sqrt_05
     var expected = (b0 * idct.idct_cos[0]) / 2.0
 
     assert_almost_equal(expected, 28.284271247462, atol=0.0001)
