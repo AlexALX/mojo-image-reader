@@ -16,12 +16,25 @@ def test_huffman_build_simple() raises:
 
     ht.build_huffman()
 
-    # Primary Lookup Table Assertions (E2 Parity: stores symbol + 1)
+    # Primary Lookup Table Assertions
     # Key formula: (bits << 16) + code
-    assert_equal(ht.lookup[(1 << 16) + 0], 11)   # Symbol 10 + 1
-    assert_equal(ht.lookup[(2 << 16) + 2], 21)   # Symbol 20 + 1
-    assert_equal(ht.lookup[(2 << 16) + 3], 31)   # Symbol 30 + 1
-    assert_equal(ht.lookup[(3 << 16) + 8], 41)   # Symbol 40 + 1
+
+    # Symbol 10
+    var entry1 = ht.fast_lookup[0]
+    assert_equal(entry1 & 0x0F, 1)
+    assert_equal(entry1 >> 4, 10)
+
+    # Symbol 20
+    var entry2 = ht.fast_lookup[512]
+    assert_equal(entry2 & 0x0F, 2)
+    assert_equal(entry2 >> 4, 20)
+
+    # Symbol 30
+    var entry3 = ht.fast_lookup[768]
+    assert_equal(entry3 & 0x0F, 2)
+    assert_equal(entry3 >> 4, 30)
+
+    assert_equal(ht.lookup[(3 << 16) + 8], 40)   # Symbol 40
 
     assert_equal(ht.max_bits, 3)
 

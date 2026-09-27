@@ -7,7 +7,11 @@ struct HuffmanTable:
     var counts: List[Int]          # Number of codes for each bit length (1-16)
     var symbols: List[Int]         # Raw symbol values array
     var max_bits: Int              # Maximum code bit length encountered
-    var lookup: Dict[Int, Int]     # Primary lookup table: key = (bits << 16) + code, value = symbol + 1
+
+    # Fast flat lookup table: index = 10-bit prefix, value = (symbol << 4) | length
+    var fast_lookup: List[Int]
+    # Fallback dictionary for rare codes longer than 10 bits
+    var lookup: Dict[Int, Int]
 
     def __init__(out self: Self, table_class: Int, id: Int):
         self.table_class = table_class
@@ -17,12 +21,13 @@ struct HuffmanTable:
             self.counts.append(0)
         self.symbols = List[Int]()
         self.max_bits = 0
+        self.fast_lookup = List[Int](length=1024, fill=0)
         self.lookup = Dict[Int, Int]()
 
     def build_huffman(mut self):
         """
-        Builds Huffman prefix codes, primary lookup entries,
-        and fast lookahead, caches mirroring.
+        Builds Huffman prefix codes and populates a 10-bit flat fast lookup table
+        along with a fallback dictionary for longer codes.
         """
         var code = 0
         var index = 0
@@ -41,9 +46,20 @@ struct HuffmanTable:
 
                 var symbol = self.symbols[index]
 
-                # Populate primary lookup map: key = (bits << 16) + code
+                if bits <= 10:
+                    # Populate fast lookup table by replicating entries for all trailing bit variations
+                    var shift = 10 - bits
+                    var base_code = code << shift
+                    var num_entries = 1 << shift
+                    var packed_val = (symbol << 4) | bits
+
+                    if base_code + num_entries <= 1024:
+                        for i in range(num_entries):
+                            self.fast_lookup[base_code + i] = packed_val
+
+                # Fallback for rare long codes or insufficient bits
                 var lookup_key = (bits << 16) + code
-                self.lookup[lookup_key] = symbol + 1
+                self.lookup[lookup_key] = symbol
 
                 code += 1
                 index += 1
@@ -53,31 +69,60 @@ struct HuffmanTable:
 
         self.max_bits = max_bits_val
 
+    @always_inline
     def huffman_read(self, mut bitreader: BitReader) raises -> Int:
         """
-        Reads a single Huffman-encoded symbol from the bit stream.
+        Reads a Huffman-encoded symbol in O(1) using the fast lookup table.
         """
-        var code = 0
 
+        if bitreader.restart_marker:
+            return -2
+
+        if bitreader.early_marker:
+            return -1
+
+        var found_marker = 0
+
+        # Ensure we have at least 10 bits in the bit_buffer
+        while bitreader.bit_count < 10:
+            var byte = bitreader.read_byte()
+            if byte < 0:
+                found_marker = byte
+                break
+
+            bitreader.bit_buffer = (bitreader.bit_buffer << 8) | byte
+            bitreader.bit_count += 8
+
+        # If we have at least 10 bits, do a fast O(1) array lookup
+        if bitreader.bit_count >= 10:
+            var peek_idx = (bitreader.bit_buffer >> (bitreader.bit_count - 10)) & 0x3FF
+            var entry = self.fast_lookup[peek_idx]
+
+            if entry != 0:
+                var length = entry & 0x0F
+                var symbol = entry >> 4
+                bitreader.bit_count -= length
+                return symbol
+
+        # Fallback slow path for codes longer than 10 bits or edge cases
+        var code = 0
         for bits in range(1, self.max_bits + 1):
             if bitreader.bit_count == 0:
+                if found_marker:
+                    return found_marker
+
                 var byte = bitreader.read_byte()
-                if byte<0:
+                if byte < 0:
                     return byte
                 bitreader.bit_buffer = byte
                 bitreader.bit_count = 8
 
             bitreader.bit_count -= 1
-
-            # Extract the next single bit from the buffer
             var bit = (bitreader.bit_buffer >> bitreader.bit_count) & 1
             code = (code << 1) | bit
 
-            # Check lookup table for a matching code
             var key = (bits << 16) + code
             if key in self.lookup:
-                var val = self.lookup[key]
-                return val - 1
+                return self.lookup[key]
 
-        # Return error code if no valid prefix matches
         return -100

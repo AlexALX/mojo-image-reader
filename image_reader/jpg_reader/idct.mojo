@@ -29,62 +29,79 @@ struct IDCT:
 
     def perform_idct(mut self, mut block: List[Float32], level_shift: Float32, output_shift: Float32) -> Bool:
         """
-        Performs 8x8 IDCT.
+        Performs 8x8 IDCT using SIMD acceleration and explicit pointer operations.
         """
-        # 1. Solid color fast path (DC-only)
+        var p_block = block.unsafe_ptr()
+
+        # 1. Solid color fast path (DC-only check)
         var is_solid = True
         for i in range(1, 64):
-            if abs(block[i]) > 0.0001:
+            if abs(p_block.unsafe_offset(i).unsafe_load()) > 0.0001:
                 is_solid = False
                 break
 
         if is_solid:
-            var dc_val = (block[0] / 8.0) + level_shift
+            var dc_val = (p_block.unsafe_offset(0).unsafe_load() / 8.0) + level_shift
             if output_shift > 0.0:
                 dc_val = dc_val / output_shift
 
             for i in range(64):
-                block[i] = dc_val
+                p_block.unsafe_offset(i).unsafe_store(dc_val)
             return True
 
-        # Reuse pre-allocated temp buffer instead of creating a new List per block
+        # Cache pointers to avoid overhead inside tight loops
+        var p_temp = self.temp_buf.unsafe_ptr()
+        var p_row = self.row_buf.unsafe_ptr()
+        var p_col = self.col_buf.unsafe_ptr()
+        var p_cos = self.idct_cos.unsafe_ptr()
+
+        # Zero out temp buffer safely
         for i in range(64):
-            self.temp_buf[i] = 0.0
+            p_temp.unsafe_offset(i).unsafe_store(0.0)
 
         # 2. Process Rows (1D IDCT on Rows, dividing sum by 2)
         for y in range(8):
             var row_offset = y * 8
 
-            # Reuse row buffer by direct indexing assignments
-            self.row_buf[0] = block[row_offset + 0] * self.sqrt_05
+            # Load first element with scaling factor using unsafe operations
+            p_row.unsafe_offset(0).unsafe_store(p_block.unsafe_offset(row_offset + 0).unsafe_load() * self.sqrt_05)
             for i in range(1, 8):
-                self.row_buf[i] = block[row_offset + i]
+                p_row.unsafe_offset(i).unsafe_store(p_block.unsafe_offset(row_offset + i).unsafe_load())
 
+            # Vectorized row processing loop
             for x in range(8):
-                var sum_val = Float32(0.0)
+                var sum_vec = SIMD[DType.float32, 8](0.0)
                 var base_idx = x * 8
-                for u in range(8):
-                    sum_val += self.row_buf[u] * self.idct_cos[base_idx + u]
-                self.temp_buf[row_offset + x] = sum_val / 2.0
+
+                var r_vals = p_row.unsafe_load[width=8](0)
+                var c_vals = p_cos.unsafe_load[width=8](base_idx)
+
+                sum_vec += r_vals * c_vals
+                var sum_val = sum_vec.reduce_add()
+
+                p_temp.unsafe_offset(row_offset + x).unsafe_store(sum_val / 2.0)
 
         # 3. Process Columns (1D IDCT on Cols)
         for x in range(8):
-            # Reuse column buffer by direct indexing assignments
-            self.col_buf[0] = self.temp_buf[x + 0] * self.sqrt_05
+            p_col.unsafe_offset(0).unsafe_store(p_temp.unsafe_offset(x + 0).unsafe_load() * self.sqrt_05)
             for i in range(1, 8):
-                self.col_buf[i] = self.temp_buf[x + i * 8]
+                p_col.unsafe_offset(i).unsafe_store(p_temp.unsafe_offset(x + i * 8).unsafe_load())
 
+            # Vectorized column processing loop
             for y in range(8):
-                var sum_val = Float32(0.0)
+                var sum_vec = SIMD[DType.float32, 8](0.0)
                 var base_idx = y * 8
-                for v in range(8):
-                    sum_val += self.col_buf[v] * self.idct_cos[base_idx + v]
 
-                # Full 2D synthesis without extra column division
+                var c_col_vals = p_col.unsafe_load[width=8](0)
+                var c_cos_vals = p_cos.unsafe_load[width=8](base_idx)
+
+                sum_vec += c_col_vals * c_cos_vals
+                var sum_val = sum_vec.reduce_add()
+
                 var val = (sum_val / 2.0) + level_shift
                 if output_shift > 0.0:
                     val = val / output_shift
 
-                block[y * 8 + x] = val
+                p_block.unsafe_offset(y * 8 + x).unsafe_store(val)
 
         return True

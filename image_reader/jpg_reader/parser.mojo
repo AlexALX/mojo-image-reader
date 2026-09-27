@@ -216,8 +216,8 @@ struct JpegParser:
         var num_components = reader.u8()
         self.component_count = num_components
 
-        for _ in range(num_components+1):
-            self.components.append(JpegComponent())
+        self.components.reserve(num_components+1)
+        self.components.append(JpegComponent()) # dummy
 
         self.progressive = True if marker == 0xC2 else False
 
@@ -237,13 +237,14 @@ struct JpegParser:
             var comp_width = self.width * h_factor // self.max_h
             var comp_height = self.height * v_factor // self.max_v
 
-            if comp_id < len(self.components):
-                self.components[comp_id].id = comp_id
-                self.components[comp_id].h = h_factor
-                self.components[comp_id].v = v_factor
-                self.components[comp_id].qt = q_table_idx
-                self.components[comp_id].width = comp_width
-                self.components[comp_id].height = comp_height
+            var component = JpegComponent()
+            component.id = comp_id
+            component.h = h_factor
+            component.v = v_factor
+            component.qt = q_table_idx
+            component.width = comp_width
+            component.height = comp_height
+            self.components.append(component^)
 
             comptime if DEBUG:
                 print("  Component ID:", comp_id, "H:", h_factor, "V:", v_factor, "Q-Table:", q_table_idx)
@@ -261,8 +262,7 @@ struct JpegParser:
             var precision = info >> 4
             var table_id = info & 15
 
-            var normalized_table = List[Int]()
-            for _ in range(64): normalized_table.append(0)
+            var normalized_table = List[Int](length=64, fill=0)
 
             for i in range(64):
                 var item_val: Int = reader.u8() if precision == 0 else reader.u16()

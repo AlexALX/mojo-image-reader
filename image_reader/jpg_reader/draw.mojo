@@ -29,9 +29,6 @@ struct ImageDrawer:
         var final_x = (mcu_x * h_factor + block_x_in_mcu) * 8
         var final_y = (mcu_y * v_factor + block_y_in_mcu) * 8
 
-        var p_block = block.unsafe_ptr()
-
-        var p_plane = plane.unsafe_ptr()
         var block_index = 0
         for by in range(8):
             var py = final_y + by
@@ -41,8 +38,8 @@ struct ImageDrawer:
             for bx in range(8):
                 var px = final_x + bx
                 if px < comp_w:
-                    var val = p_block.unsafe_offset(block_index).unsafe_load()
-                    p_plane.unsafe_offset(row_offset + px).unsafe_store(val)
+                    var val = block.unsafe_get(block_index)
+                    plane.unsafe_set(row_offset + px, val)
                 block_index += 1
 
     @staticmethod
@@ -134,15 +131,32 @@ struct ImageDrawer:
         diff: Int,
         max_val: Int
     ):
-        # Loop through every pixel on the target image grid
-        for y in range(height):
-            var cb_y = 0 if is_grayscale else (y * cb_h) / height
-            var cr_y = 0 if is_grayscale else (y * cr_h) / height
-            var cb_row_offset = 0 if is_grayscale else cb_y * cb_w
-            var cr_row_offset = 0 if is_grayscale else cr_y * cr_w
+        var pixel_offset = 0
+
+        var cb_row_offsets = List[Int](length=height, fill=0)
+        var cr_row_offsets = List[Int](length=height, fill=0)
+        var cb_x_map = List[Int](length=width, fill=0)
+        var cr_x_map = List[Int](length=width, fill=0)
+
+        if not is_grayscale:
+            for y in range(height):
+                var cb_y = (y * cb_h) / height
+                var cr_y = (y * cr_h) / height
+                cb_row_offsets[y] = cb_y * cb_w
+                cr_row_offsets[y] = cr_y * cr_w
 
             for x in range(width):
-                var y_idx = y * width + x
+                cb_x_map[x] = (x * cb_w) / width
+                cr_x_map[x] = (x * cr_w) / width
+
+        # Loop through every pixel on the target image grid
+        for y in range(height):
+            var cb_row_offset = cb_row_offsets[y]
+            var cr_row_offset = cr_row_offsets[y]
+            var y_row_base = y * width
+
+            for x in range(width):
+                var y_idx = y_row_base + x
 
                 # Fetch Luma value directly (already clamped/level-shifted during IDCT)
                 var y_val = planes_y[y_idx]
@@ -160,20 +174,19 @@ struct ImageDrawer:
                     var final_r = min(max_val, max(0, Int(scaled_r)))
 
                     if is_16bit:
-                        buffer.data_u16.append(UInt16(final_r))
-                        buffer.data_u16.append(UInt16(final_r))
-                        buffer.data_u16.append(UInt16(final_r))
+                        var final_pixel = UInt16(final_r)
+                        buffer.data_u16.unsafe_set(pixel_offset, final_pixel)
+                        buffer.data_u16.unsafe_set(pixel_offset+1, final_pixel)
+                        buffer.data_u16.unsafe_set(pixel_offset+2, final_pixel)
                     else:
-                        buffer.data_u8.append(UInt8(final_r))
-                        buffer.data_u8.append(UInt8(final_r))
-                        buffer.data_u8.append(UInt8(final_r))
+                        var final_pixel = UInt8(final_r)
+                        buffer.data_u8.unsafe_set(pixel_offset, final_pixel)
+                        buffer.data_u8.unsafe_set(pixel_offset+1, final_pixel)
+                        buffer.data_u8.unsafe_set(pixel_offset+2, final_pixel)
                 else:
                     # Map pixel coordinates to chroma planes considering subsampling scale
-                    var cb_x = (x * cb_w) / width
-                    var cr_x = (x * cr_w) / width
-
-                    var cb_idx = cb_row_offset + cb_x
-                    var cr_idx = cr_row_offset + cr_x
+                    var cb_idx = cb_row_offset + cb_x_map[x]
+                    var cr_idx = cr_row_offset + cr_x_map[x]
 
                     var cb_val = (planes_cb[cb_idx] - level_shift)
                     var cr_val = (planes_cr[cr_idx] - level_shift)
@@ -205,10 +218,17 @@ struct ImageDrawer:
                     var final_b = min(max_val, max(0, Int(scaled_b)))
 
                     if is_16bit:
-                        buffer.data_u16.append(UInt16(final_r))
-                        buffer.data_u16.append(UInt16(final_g))
-                        buffer.data_u16.append(UInt16(final_b))
+                        buffer.data_u16.unsafe_set(pixel_offset, UInt16(final_r))
+                        buffer.data_u16.unsafe_set(pixel_offset+1, UInt16(final_g))
+                        buffer.data_u16.unsafe_set(pixel_offset+2, UInt16(final_b))
                     else:
-                        buffer.data_u8.append(UInt8(final_r))
-                        buffer.data_u8.append(UInt8(final_g))
-                        buffer.data_u8.append(UInt8(final_b))
+                        buffer.data_u8.unsafe_set(pixel_offset, UInt8(final_r))
+                        buffer.data_u8.unsafe_set(pixel_offset+1, UInt8(final_g))
+                        buffer.data_u8.unsafe_set(pixel_offset+2, UInt8(final_b))
+
+                pixel_offset += 3
+
+        if is_16bit:
+            buffer.data_u16.resize(unsafe_uninit_length=width * height * 3)
+        else:
+            buffer.data_u8.resize(unsafe_uninit_length=width * height * 3)

@@ -11,17 +11,21 @@ struct Quantization:
     @staticmethod
     def dequantize_block(raw_block: List[Int], q_table: List[Int], mut out_block: List[Float32]):
         """
-        Dequantizes an 8x8 block in-place using the pre-ordered quantization table.
+        Dequantizes an 8x8 block in-place using SIMD acceleration and explicit pointers.
         """
         var p_raw = raw_block.unsafe_ptr()
         var p_q = q_table.unsafe_ptr()
         var p_out = out_block.unsafe_ptr()
 
-        for i in range(64):
-            var raw_val = p_raw.unsafe_offset(i).unsafe_load()
-            var q_val   = p_q.unsafe_offset(i).unsafe_load()
+        # Process 64 elements in chunks of 8 using SIMD vectors
+        for i in range(0, 64, 8):
+            # Load 8 raw integer coefficients and 8 quantization values
+            var raw_vec = p_raw.unsafe_offset(i).unsafe_load[width=8]()
+            var q_vec = p_q.unsafe_offset(i).unsafe_load[width=8]()
 
-            p_out.unsafe_offset(i).unsafe_store(Float32(raw_val * q_val))
+            var dequant_vec = SIMD[DType.float32, 8](raw_vec) * SIMD[DType.float32, 8](q_vec)
+
+            p_out.unsafe_offset(i).unsafe_store(dequant_vec)
 
 struct JpgDecoder:
     var parser: JpegParser
@@ -87,13 +91,18 @@ struct JpgDecoder:
         for mcu_idx in range(parser.mcu_count):
 
             if restart_interval > 0 and mcu_since_restart >= restart_interval:
-                var marker_byte = self.parser.bit_reader.read_byte()
-                if marker_byte == -2:
-                    self.parser.bit_reader.align()
-                    self.parser.scan_eob_run = 0
-                    for i in range(len(prev_dcs)):
-                        prev_dcs[i] = 0
-                    mcu_since_restart = 0
+                self.parser.bit_reader.align()
+
+                if parser.bit_reader.restart_marker==0:
+                    _ = self.parser.bit_reader.read_byte()
+
+                parser.bit_reader.restart_marker = 0
+
+                self.parser.scan_eob_run = 0
+                for i in range(len(prev_dcs)):
+                    prev_dcs[i] = 0
+
+                mcu_since_restart = 0
 
             # Iterate through components in the scan
             for scan_comp_idx in range(len(parser.frame_components)):
@@ -114,6 +123,7 @@ struct JpgDecoder:
                     var updated_dc = self.decode_dc_first(
                         dc_tbl_id, prev_dcs[comp_id]
                     )
+
                     prev_dcs[comp_id] = updated_dc
                     raw_block[0] = updated_dc
 
@@ -173,16 +183,27 @@ struct JpgDecoder:
         """
         ref parser = self.parser
 
-        # Initialize global coefficient storage
+        # Initialize global coefficient storage precisely to avoid dynamic allocations during scans
         if len(parser.coefficients) == 0:
             for comp_id in range(len(parser.components)):
                 var comp_blocks = List[List[Int]]()
                 ref comp_info = self.parser.components[comp_id]
-                var total_blocks = comp_info.width * comp_info.height // 64
-                if total_blocks == 0: total_blocks = 1
-                for _ in range(total_blocks * 4):
-                    var blk = List[Int]()
-                    for _ in range(64): blk.append(0)
+
+                # Calculate exact required blocks based on MCU grid and component factors
+                var h_factor = comp_info.h
+                var v_factor = comp_info.v
+                var max_blocks = parser.mcu_count * h_factor * v_factor
+
+                # Fallback to dimensions-based block count if MCU count is smaller
+                var blocks_x = (comp_info.width + 7) // 8
+                var blocks_y = (comp_info.height + 7) // 8
+                var total_blocks = blocks_x * blocks_y
+                if total_blocks < max_blocks:
+                    total_blocks = max_blocks
+
+                # Pre-allocate all blocks in advance to eliminate heap allocations in tight loops
+                for _ in range(total_blocks):
+                    var blk = List[Int](length=64, fill=0)
                     comp_blocks.append(blk^)
                 parser.coefficients.append(comp_blocks^)
 
@@ -238,29 +259,26 @@ struct JpgDecoder:
                             index = scan_mcu * blocks_per_mcu + internal_offset
 
                         # Ensure safe bounds
-                        while index >= len(parser.coefficients[comp_id]):
-                            var blk = List[Int](length=64, fill=0)
-                            parser.coefficients[comp_id].append(blk^)
-
-                        if is_dc:
-                            if ah == 0:
-                                var updated_dc = self.decode_dc_first(dc_tbl_id, prev_dcs[comp_id])
-                                prev_dcs[comp_id] = updated_dc
-                                parser.coefficients[comp_id][index][0] = updated_dc << al
+                        if index < len(parser.coefficients[comp_id]):
+                            if is_dc:
+                                if ah == 0:
+                                    var updated_dc = self.decode_dc_first(dc_tbl_id, prev_dcs[comp_id])
+                                    prev_dcs[comp_id] = updated_dc
+                                    parser.coefficients[comp_id][index][0] = updated_dc << al
+                                else:
+                                    self.decode_dc_refinement(al, comp_id, index)
                             else:
-                                self.decode_dc_refinement(al, comp_id, index)
-                        else:
-                            if ah == 0:
-                                _ = self.decode_ac_first(
-                                    parser.bit_reader,
-                                    parser.scan_eob_run,
-                                    parser.huffman_ac[ac_tbl_id],
-                                    parser.zigzag_map,
-                                    ss, se, al,
-                                    parser.coefficients[comp_id][index]
-                                )
-                            else:
-                                _ = self.decode_ac_refinement(ac_tbl_id, ss, se, al, comp_id, index)
+                                if ah == 0:
+                                    _ = self.decode_ac_first(
+                                        parser.bit_reader,
+                                        parser.scan_eob_run,
+                                        parser.huffman_ac[ac_tbl_id],
+                                        parser.zigzag_map,
+                                        ss, se, al,
+                                        parser.coefficients[comp_id][index]
+                                    )
+                                else:
+                                    _ = self.decode_ac_refinement(ac_tbl_id, ss, se, al, comp_id, index)
 
             # Align stream after entropy scan block
             parser.bit_reader.align()
@@ -270,12 +288,29 @@ struct JpgDecoder:
             ref reader = parser.bit_reader.reader
 
             while not reader.is_eof():
-                var b = reader.u8()
+
+                var b: Int
+
+                if parser.bit_reader.early_marker:
+                    b = (parser.bit_reader.early_marker >> 8) & 0xFF
+                else:
+                    b = reader.u8()
+
                 if b == 0xFF:
-                    var marker = reader.u8()
+                    var marker: Int
+
+                    if parser.bit_reader.early_marker:
+                        marker = parser.bit_reader.early_marker & 0xFF
+                        parser.bit_reader.early_marker = 0
+                    else:
+                        marker = reader.u8()
+
                     # Skip padding 0xFF or 0x00 bytes
                     if marker == 0x00 or marker == 0xFF:
                         continue
+
+                    if marker == 0xD9:
+                        break
 
                     if marker == 0xDA: # Found next SOS marker (0xFFDA)
                         _ = parser.jpg_parse_sos()
@@ -294,7 +329,6 @@ struct JpgDecoder:
 
             if not found_nested_scan:
                 break
-
 
         # Reconstruct planes & IDCT
         var planes_y = List[Float32](length=parser.components[1].width * parser.components[1].height, fill=0.0)
