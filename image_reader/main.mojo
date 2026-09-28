@@ -10,12 +10,14 @@ struct CLIConfig:
     var output_path: String
     var precision: Int
     var format: String
+    var grayscale: Bool
 
-    def __init__(out self, input_path: String, output_path: String, precision: Int, output_format: String):
+    def __init__(out self, input_path: String, output_path: String, precision: Int, output_format: String, grayscale: Bool):
         self.input_path = input_path
         self.output_path = output_path
         self.precision = precision
         self.format = output_format
+        self.grayscale = grayscale
 
 def parse_cli_args() raises -> CLIConfig:
     """
@@ -25,16 +27,11 @@ def parse_cli_args() raises -> CLIConfig:
     # Get command-line arguments using the proper Mojo 1.1 standard library
     var args = argv()
 
-    # Check if the user provided the required file path argument
-    if len(args) < 2:
-        print("Error: Missing file path argument!")
-        print("Usage: mojo image_reader/main.mojo <image> [output.ppm] [--precision=12] [--format=pfm]")
-        raise "Missing file path argument"
-
     var input_path = ""
     var output_path = ""
     var precision = 8 # Default precision
     var output_format = ""
+    var grayscale = False
 
     var i = 1
     while i < len(args):
@@ -54,7 +51,8 @@ def parse_cli_args() raises -> CLIConfig:
 
             if output_format!="ppm" and output_format!="pgm" and output_format!="pfm":
                 raise Error("Unsupported format: " + output_format + ".\nSupported formats are: ppm, pgm, pfm")
-
+        elif arg.startswith("--grayscale"):
+            grayscale = True
         elif arg.startswith("-"):
             print("Warning: Unknown flag:", arg)
         else:
@@ -65,6 +63,11 @@ def parse_cli_args() raises -> CLIConfig:
                 output_path = arg
 
         i += 1
+
+    # Check if the user provided the required file path argument
+    if input_path == "":
+        print("Usage: mojo image_reader/main.mojo <image> [output.ppm] [--precision=12] [--format=pfm] [--grayscale]")
+        raise Error("Error: Missing file path argument!")
 
     # automatically detect if not specified
     if output_format=="":
@@ -77,7 +80,7 @@ def parse_cli_args() raises -> CLIConfig:
     if output_format=="":
         output_format = "ppm"
 
-    return CLIConfig(input_path, output_path, precision, output_format)
+    return CLIConfig(input_path, output_path, precision, output_format, grayscale)
 
 def main():
     print("Initializing Modular Image Parser Pipeline...")
@@ -113,9 +116,9 @@ def main():
                 output_path = get_output_path(file_path_str, config.format)
 
             if config.format=="ppm" or config.format=="pgm":
-                PPMCodec.save(opt_buffer.take(), output_path, config.precision, True if config.format=="pgm" else False)
+                PPMCodec.save(opt_buffer.take(), output_path, config.precision, True if config.format=="pgm" or config.grayscale else False)
             elif config.format=="pfm":
-                PFMCodec.save(opt_buffer.take(), output_path, config.precision)
+                PFMCodec.save(opt_buffer.take(), output_path, config.precision, config.grayscale)
         else:
             print("JPEG parsing failed.")
     except e:

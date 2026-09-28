@@ -6,7 +6,7 @@ struct PFMCodec:
     according to the Netpbm pfm(5) specification."""
 
     @staticmethod
-    def save(var buffer: ImageBuffer, filename: String, precision: Int) raises:
+    def save(var buffer: ImageBuffer, filename: String, precision: Int, grayscale: Bool) raises:
         """Saves an ImageBuffer as a 32-bit Float PFM file (Top-to-Bottom order, Little-Endian)."""
         var width = buffer.width
         var height = buffer.height
@@ -17,7 +17,7 @@ struct PFMCodec:
         # 1. Identifier line ('PF' for color)
         # 2. Dimensions line (width and height separated by blank)
         # 3. Scale Factor / Endianness line (negative value means little-endian raster)
-        var format = "Pf" if buffer.grayscale else "PF"
+        var format = "Pf" if grayscale else "PF"
 
         var header = (
             format + "\n"
@@ -54,7 +54,13 @@ struct PFMCodec:
 
         # Raster data iteration loop
         if precision <= 8:
-            var src_ptr = buffer.data_u8.unsafe_ptr()
+            var data: List[UInt8]
+            if grayscale:
+                data = buffer.get_grayscale()
+            else:
+                data = buffer.get_rgb()
+
+            var src_ptr = data.unsafe_ptr()
 
             for y in range(height):
                 var row_start = y * stride
@@ -62,7 +68,13 @@ struct PFMCodec:
                     var val = Float32(src_ptr.unsafe_offset(row_start + x).unsafe_load())
                     append_float_pixel(val)
         else:
-            var src_ptr = buffer.data_u16.unsafe_ptr()
+            var data: List[UInt16]
+            if grayscale:
+                data = buffer.get_grayscale_16bit()
+            else:
+                data = buffer.get_rgb_16bit()
+
+            var src_ptr = data.unsafe_ptr()
             for y in range(height):
                 var row_start = y * stride
                 for x in range(stride):

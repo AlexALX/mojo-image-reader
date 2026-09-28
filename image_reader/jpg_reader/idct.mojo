@@ -8,8 +8,6 @@ from std.math import cos, sqrt, pi
 # ==============================================================================
 
 struct IDCT:
-    var temp_buf: List[Float32]
-    var col_buf: List[Float32]
     var inv_sqrt2: Float32
     var c1: Float32
     var c2: Float32
@@ -27,10 +25,6 @@ struct IDCT:
         self.c5 = Float32(cos(5.0 * pi / 16.0))
         self.c6 = Float32(cos(6.0 * pi / 16.0))
         self.c7 = Float32(cos(7.0 * pi / 16.0))
-
-        # Persistent workspace buffers
-        self.temp_buf = List[Float32](length=64, fill=0.0)
-        self.col_buf = List[Float32](length=8, fill=0.0)
 
     # Fully vectorized 8-point 1D IDCT butterfly executing across 8 SIMD lanes simultaneously
     @staticmethod

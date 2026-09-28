@@ -46,10 +46,10 @@ Currently, the library features a robust **JPEG decoding pipeline** along with P
 ## 🚀 Quick Start
 
 ### 1. CLI Usage
-You can run the JPEG reader directly from the command line using `image_reader/main.mojo`. It supports custom precision and output formats (`ppm` or `pfm`):
+You can run the JPEG reader directly from the command line using `image_reader/main.mojo`. It supports custom precision and output formats (`ppm`, `pgm` or `pfm`):
 
 ```bash
-mojo image_reader/main.mojo input.jpg output.ppm --precision=8 --format=ppm
+mojo image_reader/main.mojo input.jpg output.ppm --precision=8 --format=ppm --grayscale
 ```
 
 ### 2. NumPy & Python Integration
@@ -100,6 +100,7 @@ mojo -I . tests/jpg_reader/test_assemble.mojo
   - [x] Zero-overhead raw pointer memory management
   - [x] Exporters: PPM/PGM (8/16-bit), PFM (32-bit HDR)
   - [x] NumPy Bridge for seamless Python interoperability
+  - [x] Grayscale export support
 
 - [x] **JPEG Decoder**
   - [x] Baseline (8/12-bit) precision support
