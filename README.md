@@ -14,10 +14,11 @@ Currently, the library features a robust **JPEG decoding pipeline** along with P
   * Restart Marker support with automatic stream resynchronization.
 * **Performance & Memory Optimizations**:
   * Built with raw pointer arithmetic (`Pointer`) to completely bypass bounds-checking and lifetime tracking overhead in hot loops.
-  * LLVM auto-vectorization friendly pipeline for dequantization and IDCT blocks.
+  * SIMD accelerated pipeline for dequantization and IDCT blocks.
 * **Flexible Export & Interoperability**:
   * **PPM Exporter**: Supports 8-bit and 12/16-bit integer color depths (`P6`).
-  * **PFM Exporter**: 32-bit Float High Dynamic Range (HDR) export (`PF` format, Little-Endian).
+  * **PGM Exporter**: Supports 8-bit and 12/16-bit grayscale export (`P5`).
+  * **PFM Exporter**: 32-bit Float High Dynamic Range (HDR) export (`PF`/`Pf` formats, Little-Endian) with automatic channel detection.
   * **NumPy Bridge**: Direct zero-copy data exchange with the Python NumPy ecosystem.
 
 ## 📌 Notes
@@ -96,7 +97,7 @@ mojo -I . tests/jpg_reader/test_assemble.mojo
 
 - [x] **Core & Exporters**
   - [x] Zero-overhead raw pointer memory management
-  - [x] Exporters: PPM (8/16-bit), PFM (32-bit HDR)
+  - [x] Exporters: PPM/PGM (8/16-bit), PFM (32-bit HDR)
   - [x] NumPy Bridge for seamless Python interoperability
 
 - [x] **JPEG Decoder**

@@ -17,8 +17,10 @@ struct PFMCodec:
         # 1. Identifier line ('PF' for color)
         # 2. Dimensions line (width and height separated by blank)
         # 3. Scale Factor / Endianness line (negative value means little-endian raster)
+        var format = "Pf" if buffer.grayscale else "PF"
+
         var header = (
-            "PF\n"
+            format + "\n"
             + String(width)
             + " "
             + String(height)
@@ -48,19 +50,22 @@ struct PFMCodec:
             byte_stream.append(raw_bytes[2])
             byte_stream.append(raw_bytes[3])
 
+        var stride = width * buffer.channels
+
         # Raster data iteration loop
         if precision <= 8:
             var src_ptr = buffer.data_u8.unsafe_ptr()
+
             for y in range(height):
-                var row_start = y * width * 3
-                for x in range(width * 3):
+                var row_start = y * stride
+                for x in range(stride):
                     var val = Float32(src_ptr.unsafe_offset(row_start + x).unsafe_load())
                     append_float_pixel(val)
         else:
             var src_ptr = buffer.data_u16.unsafe_ptr()
             for y in range(height):
-                var row_start = y * width * 3
-                for x in range(width * 3):
+                var row_start = y * stride
+                for x in range(stride):
                     var val = Float32(src_ptr.unsafe_offset(row_start + x).unsafe_load())
                     append_float_pixel(val)
 

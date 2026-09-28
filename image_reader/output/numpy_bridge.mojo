@@ -22,7 +22,10 @@ struct NumPyBridge:
 
                 # Wrap memory buffer into a NumPy array and reshape
                 var arr = np.frombuffer(c_array, dtype=np.uint16)
-                return arr.reshape(buffer.height, buffer.width, buffer.channels)
+                if buffer.channels == 1:
+                    return arr.reshape(buffer.height, buffer.width)
+                else:
+                    return arr.reshape(buffer.height, buffer.width, buffer.channels)
             else:
                 # Retrieve raw pointer for 8-bit data
                 var ptr = buffer.data_u8.unsafe_ptr()
@@ -31,7 +34,10 @@ struct NumPyBridge:
 
                 # Wrap memory buffer into a NumPy array and reshape
                 var arr = np.frombuffer(c_array, dtype=np.uint8)
-                return arr.reshape(buffer.height, buffer.width, buffer.channels)
+                if buffer.channels == 1:
+                    return arr.reshape(buffer.height, buffer.width)
+                else:
+                    return arr.reshape(buffer.height, buffer.width, buffer.channels)
 
         except e:
             print("Error while converting ImageBuffer to NumPy array:", e)

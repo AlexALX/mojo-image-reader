@@ -34,7 +34,7 @@ def parse_cli_args() raises -> CLIConfig:
     var input_path = ""
     var output_path = ""
     var precision = 8 # Default precision
-    var output_format = "ppm"
+    var output_format = ""
 
     var i = 1
     while i < len(args):
@@ -50,10 +50,10 @@ def parse_cli_args() raises -> CLIConfig:
             if precision != 8 and precision != 12 and precision != 16:
                 raise Error("Unsupported precision value: " + val_str + ".\nSupported values are: 8, 12, 16")
         elif arg.startswith("--format="):
-            output_format = arg[byte=9:]
+            output_format = arg[byte=9:].lower()
 
-            if output_format!="ppm" and output_format!="pfm":
-                raise Error("Unsupported format: " + output_format + ".\nSupported formats are: ppm, pfm")
+            if output_format!="ppm" and output_format!="pgm" and output_format!="pfm":
+                raise Error("Unsupported format: " + output_format + ".\nSupported formats are: ppm, pgm, pfm")
 
         elif arg.startswith("-"):
             print("Warning: Unknown flag:", arg)
@@ -65,6 +65,17 @@ def parse_cli_args() raises -> CLIConfig:
                 output_path = arg
 
         i += 1
+
+    # automatically detect if not specified
+    if output_format=="":
+        var length = output_path.byte_length()
+        if length >= 4:
+            var out_format = output_path[byte=length-4:].lower()
+            if out_format==".pgm" or out_format==".pfm":
+                output_format = String(out_format[byte=1:])
+
+    if output_format=="":
+        output_format = "ppm"
 
     return CLIConfig(input_path, output_path, precision, output_format)
 
@@ -101,8 +112,8 @@ def main():
             else:
                 output_path = get_output_path(file_path_str, config.format)
 
-            if config.format=="ppm":
-                PPMCodec.save(opt_buffer.take(), output_path, config.precision)
+            if config.format=="ppm" or config.format=="pgm":
+                PPMCodec.save(opt_buffer.take(), output_path, config.precision, True if config.format=="pgm" else False)
             elif config.format=="pfm":
                 PFMCodec.save(opt_buffer.take(), output_path, config.precision)
         else:

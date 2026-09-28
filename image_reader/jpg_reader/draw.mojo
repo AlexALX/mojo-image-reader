@@ -89,7 +89,7 @@ struct ImageDrawer:
         var diff = parser.precision_diff
         var output_precision = parser.output_precision
 
-        var buffer = ImageBuffer(width, height, 3, output_precision)
+        var buffer = ImageBuffer(width, height, 1 if is_grayscale else 3, output_precision)
 
         if buffer.is_16bit:
             if is_grayscale:
@@ -204,17 +204,15 @@ struct ImageDrawer:
                     if is_16bit:
                         var r_u16 = r_vec.cast[DType.uint16]()
                         for i in range(simd_w):
-                            var po = pixel_offset + i * 3
+                            var po = pixel_offset + i
                             ptr_u16.unsafe_offset(po).unsafe_store(r_u16[i])
-                            ptr_u16.unsafe_offset(po+1).unsafe_store(r_u16[i])
-                            ptr_u16.unsafe_offset(po+2).unsafe_store(r_u16[i])
                     else:
                         var r_u8 = r_vec.cast[DType.uint8]()
                         for i in range(simd_w):
-                            var po = pixel_offset + i * 3
+                            var po = pixel_offset + i
                             ptr_u8.unsafe_offset(po).unsafe_store(r_u8[i])
-                            ptr_u8.unsafe_offset(po+1).unsafe_store(r_u8[i])
-                            ptr_u8.unsafe_offset(po+2).unsafe_store(r_u8[i])
+
+                    pixel_offset += simd_w
                 else:
                     var cb_vec = SIMD[DType.float32, simd_w]()
                     var cr_vec = SIMD[DType.float32, simd_w]()
@@ -262,7 +260,7 @@ struct ImageDrawer:
                             ptr_u8.unsafe_offset(po+1).unsafe_store(g_u8[i])
                             ptr_u8.unsafe_offset(po+2).unsafe_store(b_u8[i])
 
-                pixel_offset += simd_w * 3
+                    pixel_offset += simd_w * 3
 
             # --- SCALAR TAIL LOOP: Handles remaining pixels if width is not a multiple of 8 ---
             for x in range(vec_x_end, width):
@@ -284,13 +282,11 @@ struct ImageDrawer:
                     if is_16bit:
                         var r_val = UInt16(r)
                         ptr_u16.unsafe_offset(pixel_offset).unsafe_store(r_val)
-                        ptr_u16.unsafe_offset(pixel_offset+1).unsafe_store(r_val)
-                        ptr_u16.unsafe_offset(pixel_offset+2).unsafe_store(r_val)
                     else:
                         var r_val = UInt8(r)
                         ptr_u8.unsafe_offset(pixel_offset).unsafe_store(r_val)
-                        ptr_u8.unsafe_offset(pixel_offset+1).unsafe_store(r_val)
-                        ptr_u8.unsafe_offset(pixel_offset+2).unsafe_store(r_val)
+
+                    pixel_offset += 1
                 else:
                     var cb_idx = cb_row_offset + cb_x_map[x]
                     var cr_idx = cr_row_offset + cr_x_map[x]
@@ -319,9 +315,9 @@ struct ImageDrawer:
                         ptr_u8.unsafe_offset(pixel_offset+1).unsafe_store(UInt8(g))
                         ptr_u8.unsafe_offset(pixel_offset+2).unsafe_store(UInt8(b))
 
-                pixel_offset += 3
+                    pixel_offset += 3
 
         if is_16bit:
-            buffer.data_u16.resize(unsafe_uninit_length=width * height * 3)
+            buffer.data_u16.resize(unsafe_uninit_length=width * height * buffer.channels)
         else:
-            buffer.data_u8.resize(unsafe_uninit_length=width * height * 3)
+            buffer.data_u8.resize(unsafe_uninit_length=width * height * buffer.channels)
