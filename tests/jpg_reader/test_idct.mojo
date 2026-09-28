@@ -9,15 +9,17 @@ def test_idct1d() raises:
     Row[0] = 80, all other 0. Expected result = 80 * sqrt(0.5) / 2 = 28.284271247462.
     """
     var idct = IDCT()
-    var row = List[Float32]()
-    for _ in range(8):
-        row.append(0.0)
-    row[0] = 80.0
+    var x0 = SIMD[DType.float32, 8](80.0)
+    var zero = SIMD[DType.float32, 8](0.0)
 
-    var sqrt_05 = Float32(sqrt(0.5))
-    var b0 = row[0] * sqrt_05
-    var expected = (b0 * idct.idct_cos[0]) / 2.0
+    var res = IDCT._fast_idct_1d_simd(
+        x0, zero, zero, zero, zero, zero, zero, zero,
+        idct.inv_sqrt2, idct.c1, idct.c2, idct.c3, idct.c5, idct.c6, idct.c7
+    )
 
+    var expected = (80.0 * idct.inv_sqrt2) / 2.0
+
+    assert_almost_equal(res[0][0] / 2.0, expected, atol=0.0001)
     assert_almost_equal(expected, 28.284271247462, atol=0.0001)
 
 def test_idct_dc() raises:

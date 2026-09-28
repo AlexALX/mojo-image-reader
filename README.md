@@ -15,6 +15,7 @@ Currently, the library features a robust **JPEG decoding pipeline** along with P
 * **Performance & Memory Optimizations**:
   * Built with raw pointer arithmetic (`Pointer`) to completely bypass bounds-checking and lifetime tracking overhead in hot loops.
   * SIMD accelerated pipeline for dequantization and IDCT blocks.
+  * IDCT Core: High-precision 2D Floating-Point IDCT based on the Loeffler (LLM) butterfly algorithm, fully vectorized using 8-lane SIMD.
 * **Flexible Export & Interoperability**:
   * **PPM Exporter**: Supports 8-bit and 12/16-bit integer color depths (`P6`).
   * **PGM Exporter**: Supports 8-bit and 12/16-bit grayscale export (`P5`).
@@ -106,6 +107,7 @@ mojo -I . tests/jpg_reader/test_assemble.mojo
   - [x] Progressive JPEG decoding
   - [x] Chroma Subsampling modes (4:4:4, 4:2:2, 4:2:0, 4:2:0v)
   - [x] Restart Marker support
+  - [x] Fast IDCT Loeffler (LLM) butterfly algorithm
 
 - [ ] **BMP Support**
   - [ ] Standard BITMAPINFOHEADER parser & DIB header handling
