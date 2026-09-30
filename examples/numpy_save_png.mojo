@@ -1,4 +1,4 @@
-from image_reader.jpg_reader import JpegReader
+from image_reader import ImageReader
 from image_reader.output.numpy_bridge import NumPyBridge
 from std.pathlib import Path
 from std.python import Python
@@ -7,26 +7,23 @@ def main() raises:
     var input_file = "samples/jpg/2.jpg"
     var output_file = "output_test.png"
 
-    print("Reading JPEG file:", input_file)
-    var path = Path(input_file)
-    if not path.exists():
-        print("Error: File not found:", input_file)
-        return
+    print("Reading file:", input_file)
+    var reader = ImageReader()
+    try:
+        var opt_buffer = reader.readfile(input_file)
 
-    var bytes = path.read_bytes()
-    var reader = JpegReader()
-    var opt_buffer = reader.read(bytes^)
+        if opt_buffer:
+            print("JPEG decoded successfully! Converting to NumPy & saving as PNG...")
+            var buffer = opt_buffer.take()
 
-    if opt_buffer:
-        print("JPEG decoded successfully! Converting to NumPy & saving as PNG...")
-        var buffer = opt_buffer.take()
+            var np_arr = NumPyBridge.to_ndarray(buffer)
 
-        var np_arr = NumPyBridge.to_ndarray(buffer)
+            var Image = Python.import_module("PIL.Image")
+            var img = Image.fromarray(np_arr)
+            img.save(output_file, "PNG")
 
-        var Image = Python.import_module("PIL.Image")
-        var img = Image.fromarray(np_arr)
-        img.save(output_file, "PNG")
-
-        print("Done! Saved to:", output_file)
-    else:
-        print("Failed to decode JPEG.")
+            print("Done! Saved to:", output_file)
+        else:
+            print("Failed to decode JPEG.")
+    except e:
+        print(e)

@@ -19,6 +19,7 @@ Currently, the library features a robust **JPEG & BMP decoding pipeline** along 
   * **Indexed / Monochrome**: 8-bit, 4-bit, and 1-bit (with color palette tables)
   * **Compression**: `RLE8` and `RLE4` support
   * Legacy and **OS/2** format support
+  * SIMD acceleration for 8 and 32 bit BMP
 * **Performance & Memory Optimizations**:
   * Built with raw pointer arithmetic (`Pointer`) to completely bypass bounds-checking and lifetime tracking overhead in hot loops.
   * SIMD accelerated pipeline for JPG dequantization.
@@ -69,22 +70,19 @@ For seamless interoperability with Python ecosystems, you can convert the decode
 To integrate the decoder into your own pipeline and obtain the raw `ImageBuffer` for custom processing:
 
 ```python
-from image_reader.jpg_reader import JpegReader
-from image_reader.buffer import ImageBuffer
+from image_reader import ImageReader
 from std.pathlib import Path
 
 def main() raises:
-    var path = Path("input.jpg")
-    var bytes = path.read_bytes()
-
     # Initialize the reader with desired output precision (e.g., 8 or 12 bits)
-    var reader = JpegReader(precision = 8)
-    var opt_buffer = reader.read(bytes^)
+    var reader = ImageReader(precision = 8)
+    var opt_buffer = reader.readfile("input.jpg")
 
     if opt_buffer:
         var buffer = opt_buffer.take()
         print("Decoded width:", buffer.width)
         print("Decoded height:", buffer.height)
+        print("Decoded channels:", buffer.channels)
         print("Is 16-bit:", buffer.is_16bit)
     else:
         print("Decoding failed.")
@@ -110,6 +108,7 @@ mojo -I . tests/jpg_reader/test_assemble.mojo
   - [x] PAM Exporter (8/16-bit), with alpha support
   - [x] NumPy Bridge for seamless Python interoperability
   - [x] Grayscale export support
+  - [x] Unified ImageReader struct
 
 - [x] **JPEG Decoder**
   - [x] Baseline (8/12-bit) precision support
@@ -127,6 +126,7 @@ mojo -I . tests/jpg_reader/test_assemble.mojo
   - [x] 16-bit High Color Bitfields (RGB444, RGB555, RGB565)
   - [x] OS/2 and legacy format support
   - [x] RLE8 and RLE4 compression support
+  - [x] SIMD acceleration (8/32 bit BMP)
 
 - [ ] **PNG Reader**
   - [ ] Core DEFLATE decompression & filtering pipeline

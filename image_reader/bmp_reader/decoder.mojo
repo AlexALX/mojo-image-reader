@@ -43,6 +43,73 @@ struct BmpDecoder:
         else:
             buffer.data_u8.unsafe_set(offset, pixel)
 
+    @always_inline
+    def _save_pixels[is_16bit: Bool](
+        self,
+        mut buffer: ImageBuffer,
+        channels: Int,
+        po: Int,
+        r: UInt8, g: UInt8, b: UInt8, a: UInt8 = 255
+    ):
+        if channels == 1:
+            self._save_pixel[is_16bit](buffer, po, r)
+        elif channels == 2:
+            self._save_pixel[is_16bit](buffer, po, r)
+            self._save_pixel[is_16bit](buffer, po + 1, a)
+        elif channels == 3:
+            self._save_pixel[is_16bit](buffer, po, r)
+            self._save_pixel[is_16bit](buffer, po + 1, g)
+            self._save_pixel[is_16bit](buffer, po + 2, b)
+        elif channels == 4:
+            self._save_pixel[is_16bit](buffer, po, r)
+            self._save_pixel[is_16bit](buffer, po + 1, g)
+            self._save_pixel[is_16bit](buffer, po + 2, b)
+            self._save_pixel[is_16bit](buffer, po + 3, a)
+
+    @always_inline
+    def _process_low_bpp[is_16bit: Bool, bpp: UInt8](
+            self,
+            mut buffer: ImageBuffer,
+            current_byte: UInt8,
+            mut x: Int,
+            width: Int,
+            channels: Int,
+            row_offset: Int
+        ):
+            comptime PIXELS_PER_BYTE = 8 // bpp
+            comptime MASK = (1 << bpp) - 1
+
+            var r: UInt8
+            var g: UInt8
+            var b: UInt8
+
+            for i in range(PIXELS_PER_BYTE):
+                if x >= width:
+                    break
+
+                var shift = (PIXELS_PER_BYTE - 1 - i) * bpp
+
+                var index: Int
+                if bpp==4:
+                    if i==0:
+                        index = Int((current_byte >> shift) & MASK)
+                    else:
+                        index = Int(current_byte & MASK)
+                else:
+                    index = Int((current_byte >> shift) & MASK)
+
+                var pal_idx = index * 3
+                if self.parser.is_grayscale:
+                    r = g = b = self.parser.palette[pal_idx]
+                else:
+                    r = self.parser.palette[pal_idx]
+                    g = self.parser.palette[pal_idx + 1]
+                    b = self.parser.palette[pal_idx + 2]
+
+                var po = row_offset + x * channels
+                self._save_pixels[is_16bit](buffer, channels, po, r, g, b)
+                x += 1
+
     def decode_image[is_16bit: Bool = False](mut self) raises -> ImageBuffer:
         # Seek directly to pixel data offset
         self.parser.reader.seek(self.parser.pixel_offset)
@@ -173,15 +240,90 @@ struct BmpDecoder:
                 buffer.data_u8.resize(unsafe_uninit_length=width * height * channels)
             return buffer^
 
+        var use_simd_32 = False
+        if bpp == 32:
+            if comp == 0:
+                use_simd_32 = True
+            elif comp == 3:
+                var standard_r = self.parser.r_mask_info.mask == 0x00FF0000
+                var standard_g = self.parser.g_mask_info.mask == 0x0000FF00
+                var standard_b = self.parser.b_mask_info.mask == 0x000000FF
+                var standard_a = (not self.parser.has_alpha) or (self.parser.a_mask_info.mask == 0xFF000000)
+
+                if standard_r and standard_g and standard_b and standard_a:
+                    use_simd_32 = True
+
         # Main row decoding loop
         for y in range(height):
             var draw_y = y if self.parser.is_top_down else (height - 1 - y)
             var row_offset = draw_y * width * channels
-            var pixel_offset = 0
+            var x = 0
 
-            var current_byte: UInt8 = 0
+            if use_simd_32:
+                comptime VEC = 8
+                while x <= width - VEC:
+                    var raw = self.parser.reader.read_simd[DType.uint32, VEC]()
+                    var b = (raw & 0xFF).cast[DType.uint8]()
+                    var g = ((raw >> 8) & 0xFF).cast[DType.uint8]()
+                    var r = ((raw >> 16) & 0xFF).cast[DType.uint8]()
+                    var a = ((raw >> 24) & 0xFF).cast[DType.uint8]()
 
-            for x in range(width):
+                    for i in range(VEC):
+                        var index = row_offset + (x + i) * channels
+                        self._save_pixel[is_16bit](buffer, index, r[i])
+                        self._save_pixel[is_16bit](buffer, index + 1, g[i])
+                        self._save_pixel[is_16bit](buffer, index + 2, b[i])
+                        if self.parser.has_alpha:
+                            self._save_pixel[is_16bit](buffer, index + 3, a[i])
+                    x += VEC
+
+            if bpp == 8:
+                comptime VEC = 32
+
+                if self.parser.is_grayscale:
+                    while x <= width - VEC:
+                        var gray = self.parser.reader.read_simd[DType.uint8, VEC]()
+                        for i in range(VEC):
+                            self._save_pixel[is_16bit](buffer, row_offset + x + i, gray[i])
+                        x += VEC
+                else:
+                    while x <= width - VEC:
+                        var indices = self.parser.reader.read_simd[DType.uint8, VEC]()
+                        for i in range(VEC):
+                            var pal_idx = Int(indices[i]) * 3
+                            var r = self.parser.palette[pal_idx]
+                            var g = self.parser.palette[pal_idx + 1]
+                            var b = self.parser.palette[pal_idx + 2]
+
+                            var po = row_offset + (x + i) * channels
+                            self._save_pixels[is_16bit](buffer, channels, po, r, g, b)
+                        x += VEC
+
+            if bpp == 4:
+                while x < width:
+                    var current_byte = self.parser.reader.u8_uint()
+                    self._process_low_bpp[is_16bit, 4](
+                        buffer,
+                        current_byte,
+                        x,
+                        width,
+                        channels,
+                        row_offset
+                    )
+
+            if bpp == 1:
+                while x < width:
+                    var current_byte = self.parser.reader.u8_uint()
+                    self._process_low_bpp[is_16bit, 1](
+                        buffer,
+                        current_byte,
+                        x,
+                        width,
+                        channels,
+                        row_offset
+                    )
+
+            while x < width:
                 var r: UInt8
                 var g: UInt8
                 var b: UInt8
@@ -221,54 +363,13 @@ struct BmpDecoder:
                     g = self.parser.palette[pal_idx + 1]
                     b = self.parser.palette[pal_idx + 2]
 
-                elif bpp == 4:
-                    if (x & 1) == 0:
-                        current_byte = self.parser.reader.u8_uint()
-                        var index = Int((current_byte >> 4) & UInt8(0x0F))
-                        var pal_idx = index * 3
-                        r = self.parser.palette[pal_idx]
-                        g = self.parser.palette[pal_idx + 1]
-                        b = self.parser.palette[pal_idx + 2]
-                    else:
-                        var index = Int(current_byte & UInt8(0x0F))
-                        var pal_idx = index * 3
-                        r = self.parser.palette[pal_idx]
-                        g = self.parser.palette[pal_idx + 1]
-                        b = self.parser.palette[pal_idx + 2]
-
-                elif bpp == 1:
-                    var bit_shift = 7 - (x & 7)
-                    if (x & 7) == 0:
-                        current_byte = self.parser.reader.u8_uint()
-                    var index = Int(current_byte) >> bit_shift & 1
-                    var pal_idx = index * 3
-                    r = self.parser.palette[pal_idx]
-                    g = self.parser.palette[pal_idx + 1]
-                    b = self.parser.palette[pal_idx + 2]
-
                 else:
                     raise Error("Unsupported BMP bit depth or compression")
 
                 # Write pixel bytes based on image configuration
-                var po = row_offset + pixel_offset
-                if channels == 1:
-                    self._save_pixel[is_16bit](buffer, po, r)
-                    pixel_offset += 1
-                elif channels == 2:
-                    self._save_pixel[is_16bit](buffer, po, r)
-                    self._save_pixel[is_16bit](buffer, po + 1, a)
-                    pixel_offset += 2
-                elif channels == 3:
-                    self._save_pixel[is_16bit](buffer, po, r)
-                    self._save_pixel[is_16bit](buffer, po + 1, g)
-                    self._save_pixel[is_16bit](buffer, po + 2, b)
-                    pixel_offset += 3
-                elif channels == 4:
-                    self._save_pixel[is_16bit](buffer, po, r)
-                    self._save_pixel[is_16bit](buffer, po + 1, g)
-                    self._save_pixel[is_16bit](buffer, po + 2, b)
-                    self._save_pixel[is_16bit](buffer, po + 3, a)
-                    pixel_offset += 4
+                var po = row_offset + x * channels
+                self._save_pixels[is_16bit](buffer, channels, po, r, g, b, a)
+                x += 1
 
             # Skip row padding bytes
             if comp != 1 and comp != 2 and self.parser.padding > 0:

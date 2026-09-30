@@ -2,7 +2,7 @@ from std.sys import argv
 from std.pathlib import Path
 from image_reader.jpg_reader import JpegReader
 from image_reader.bmp_reader import BmpReader
-from image_reader.buffer import ImageBuffer
+from image_reader import ImageBuffer, ImageReader
 from image_reader.output.ppm import PPMCodec
 from image_reader.output.pfm import PFMCodec
 
@@ -83,14 +83,6 @@ def parse_cli_args() raises -> CLIConfig:
 
     return CLIConfig(input_path, output_path, precision, output_format, grayscale)
 
-def detect_format(ref bytes: List[UInt8]) -> String:
-    if bytes[0] == 0xFF and bytes[1] == 0xD8:
-        return "jpg"
-    if bytes[0] == 0x42 and bytes[1] == 0x4D:
-        return "bmp"
-
-    return ""
-
 def main():
     print("Initializing Modular Image Parser Pipeline...")
 
@@ -106,27 +98,11 @@ def main():
     var file_path_str = config.input_path
 
     try:
-        var path = Path(file_path_str)
-        # Verify that the specified file actually exists on disk
-        if not path.exists():
-            print("Error: File not found at path:", file_path_str)
-            return
-
-        var bytes = path.read_bytes()
-
-        var input_format = detect_format(bytes)
-        var opt_buffer: Optional[ImageBuffer]
-        if input_format=="jpg":
-            var reader = JpegReader(config.precision)
-            opt_buffer = reader.read(bytes^)
-        elif input_format=="bmp":
-            var reader = BmpReader(config.precision)
-            opt_buffer = reader.read(bytes^)
-        else:
-            raise Error("Unsupported format")
+        var reader = ImageReader(config.precision)
+        var opt_buffer = reader.readfile(file_path_str)
 
         if opt_buffer:
-            print(input_format+" parsing completed successfully.")
+            print(reader.format+" parsing completed successfully.")
 
             var output_path: String
             if config.output_path:
@@ -139,7 +115,7 @@ def main():
             elif config.format=="pfm":
                 PFMCodec.save(opt_buffer.take(), output_path, config.precision, config.grayscale)
         else:
-            print(input_format+" parsing failed.")
+            print(reader.format+" parsing failed.")
     except e:
         print("Execution failed: ", e)
 
