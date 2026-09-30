@@ -59,7 +59,7 @@ def test_huffman_read_eof() raises:
 
     ht.build_huffman()
 
-    var bytes_data = List[UInt8]()
+    var bytes_data: List[UInt8] = [0xFF, 0xD9]
     var bin_reader = BinaryReader(bytes_data^)
     var bit_reader = BitReader(bin_reader^)
 

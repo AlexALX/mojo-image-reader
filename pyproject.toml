@@ -1,11 +1,11 @@
 [project]
 name = "image_reader"
 version = "1.0.0"
-description = "Baseline JPEG decoder written in Mojo 1.1"
+description = "Image decoders written in Mojo 1.0"
 dependencies = [
-    "mojo>=1.1.0",
+    "mojo==1.0",
 ]
 
 [tool.mojo]
-version = ">=1.1.0"
+version = ">=1.0.0"
 includes = ["."]

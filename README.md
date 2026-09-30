@@ -1,6 +1,6 @@
 # Mojo Image Reader Library
 
-A high-performance, native **Mojo v1.1+** library for reading and processing image formats. Designed with a modular architecture for low memory footprint, zero-overhead raw pointer memory access, and seamless interoperability with Python and NumPy.
+A high-performance, native **Mojo v1.0+** library for reading and processing image formats. Designed with a modular architecture for low memory footprint, zero-overhead raw pointer memory access, and seamless interoperability with Python and NumPy.
 
 Currently, the library features a robust **JPEG & BMP decoding pipeline** along with PPM/PFM/PAM format exporters and Python/NumPy interoperability.
 
