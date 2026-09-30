@@ -192,8 +192,8 @@ struct JpegParser:
     def jpg_parse_dri(mut self):
         ref reader = self.bit_reader.reader
 
-        var _ = reader.u16()
-        var interval = reader.u16()
+        var _ = reader.u16_be()
+        var interval = reader.u16_be()
         self.restart_interval = interval
         comptime if DEBUG:
             print("Parsed DRI: Restart Interval =", interval)
@@ -201,13 +201,13 @@ struct JpegParser:
     def jpg_parse_sof(mut self, marker: Int) raises:
         ref reader = self.bit_reader.reader
 
-        var _ = reader.u16()
+        var _ = reader.u16_be()
         self.precision = reader.u8()
         self.level_shift = 1 << (self.precision - 1)
         self.precision_diff = self.output_precision - self.precision
 
-        self.height = reader.u16()
-        self.width = reader.u16()
+        self.height = reader.u16_be()
+        self.width = reader.u16_be()
         var num_components = reader.u8()
         self.component_count = num_components
 
@@ -249,7 +249,7 @@ struct JpegParser:
     def jpg_parse_dqt(mut self):
         ref reader = self.bit_reader.reader
 
-        var length = reader.u16()
+        var length = reader.u16_be()
         var end_offset = reader.tell() + length - 2
 
         while reader.tell() < end_offset:
@@ -260,7 +260,7 @@ struct JpegParser:
             var normalized_table = List[Int](length=64, fill=0)
 
             for i in range(64):
-                var item_val: Int = reader.u8() if precision == 0 else reader.u16()
+                var item_val: Int = reader.u8() if precision == 0 else reader.u16_be()
                 var matrix_pos = self.zigzag_map[i]
                 normalized_table[matrix_pos] = item_val
 
@@ -272,7 +272,7 @@ struct JpegParser:
     def jpg_parse_dht(mut self) raises:
         ref reader = self.bit_reader.reader
 
-        var length = reader.u16()
+        var length = reader.u16_be()
         var end_offset = reader.tell() + length - 2
 
         comptime if DEBUG:
@@ -318,7 +318,7 @@ struct JpegParser:
     def jpg_parse_sos(mut self) raises -> Bool:
             ref reader = self.bit_reader.reader
 
-            self.scan_length = reader.u16()
+            self.scan_length = reader.u16_be()
             var components = reader.u8()
 
             self.scan_components_count = components
@@ -438,7 +438,7 @@ struct JpegParser:
                 else:
                     # Safely skip unhandled segments that specify length (e.g. APPn, COM)
                     if marker != 0xD8 and marker != 0xD9 and not (marker >= 0xD0 and marker <= 0xD7):
-                        var length = reader.u16()
+                        var length = reader.u16_be()
                         reader.skip(length - 2)
 
         return True

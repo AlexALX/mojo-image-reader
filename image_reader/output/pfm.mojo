@@ -35,8 +35,7 @@ struct PFMCodec:
         byte_stream.reserve(total_bytes)
 
         # Helper lambda/inline function to process and append a normalized float value
-        @__parameter
-        def append_float_pixel(val_raw: Float32):
+        def append_float_pixel(val_raw: Float32) capturing:
             var norm = val_raw / max_val_f32
             var val_f32: Float32
             if norm <= 0.04045:
@@ -56,9 +55,9 @@ struct PFMCodec:
         if precision <= 8:
             var data: List[UInt8]
             if grayscale:
-                data = buffer.get_grayscale()
+                data = buffer.take_grayscale()
             else:
-                data = buffer.get_rgb()
+                data = buffer.take_rgb()
 
             var src_ptr = data.unsafe_ptr()
 
@@ -70,9 +69,9 @@ struct PFMCodec:
         else:
             var data: List[UInt16]
             if grayscale:
-                data = buffer.get_grayscale_16bit()
+                data = buffer.take_grayscale_16bit()
             else:
-                data = buffer.get_rgb_16bit()
+                data = buffer.take_rgb_16bit()
 
             var src_ptr = data.unsafe_ptr()
             for y in range(height):

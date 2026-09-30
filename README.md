@@ -2,7 +2,7 @@
 
 A high-performance, native **Mojo v1.1+** library for reading and processing image formats. Designed with a modular architecture for low memory footprint, zero-overhead raw pointer memory access, and seamless interoperability with Python and NumPy.
 
-Currently, the library features a robust **JPEG decoding pipeline** along with PPM/PFM format exporters and Python/NumPy interoperability.
+Currently, the library features a robust **JPEG & BMP decoding pipeline** along with PPM/PFM/PAM format exporters and Python/NumPy interoperability.
 
 ## 🚀 Key Features
 
@@ -12,11 +12,19 @@ Currently, the library features a robust **JPEG decoding pipeline** along with P
   * Full Chroma Subsampling support: **4:4:4, 4:2:2, 4:2:0, and 4:2:0v**.
   * Grayscale JPEG (1-component) support.
   * Restart Marker support with automatic stream resynchronization.
+* **Core BMP Support**
+  * Standard `BITMAPINFOHEADER` parser & DIB header handling
+  * **Truecolor**: 24-bit RGB and 32-bit RGB/RGBA (`v5`)
+  * **High Color Bitfields**: 16-bit (`RGB444`, `RGB555`, `RGB565`)
+  * **Indexed / Monochrome**: 8-bit, 4-bit, and 1-bit (with color palette tables)
+  * **Compression**: `RLE8` and `RLE4` support
+  * Legacy and **OS/2** format support
 * **Performance & Memory Optimizations**:
   * Built with raw pointer arithmetic (`Pointer`) to completely bypass bounds-checking and lifetime tracking overhead in hot loops.
-  * SIMD accelerated pipeline for dequantization and IDCT blocks.
+  * SIMD accelerated pipeline for JPG dequantization.
   * IDCT Core: High-precision 2D Floating-Point IDCT based on the Loeffler (LLM) butterfly algorithm, fully vectorized using 8-lane SIMD.
 * **Flexible Export & Interoperability**:
+  * **PAM Exporter**: Supports 8-bit and 12/16-bit export with alpha channel (`P7`).
   * **PPM Exporter**: Supports 8-bit and 12/16-bit integer color depths (`P6`).
   * **PGM Exporter**: Supports 8-bit and 12/16-bit grayscale export (`P5`).
   * **PFM Exporter**: 32-bit Float High Dynamic Range (HDR) export (`PF`/`Pf` formats, Little-Endian) with automatic channel detection.
@@ -99,6 +107,7 @@ mojo -I . tests/jpg_reader/test_assemble.mojo
 - [x] **Core & Exporters**
   - [x] Zero-overhead raw pointer memory management
   - [x] Exporters: PPM/PGM (8/16-bit), PFM (32-bit HDR)
+  - [x] PAM Exporter (8/16-bit), with alpha support
   - [x] NumPy Bridge for seamless Python interoperability
   - [x] Grayscale export support
 
@@ -110,13 +119,14 @@ mojo -I . tests/jpg_reader/test_assemble.mojo
   - [x] Restart Marker support
   - [x] Fast IDCT Loeffler (LLM) butterfly algorithm
 
-- [ ] **BMP Support**
-  - [ ] Standard BITMAPINFOHEADER parser & DIB header handling
-  - [ ] 24-bit RGB
-  - [ ] 8-bit, 4-bit, and 1-bit Monochrome (with color palette tables)
-  - [ ] 16-bit High Color Bitfields (RGB444, RGB555, RGB565)
-  - [ ] OS/2 and legacy format support
-  - [ ] RLE8 and RLE4 compression support
+- [x] **BMP Support**
+  - [x] Standard BITMAPINFOHEADER parser & DIB header handling
+  - [x] 24-bit RGB
+  - [x] 32-bit RGB and RGBA (v5)
+  - [x] 8-bit, 4-bit, and 1-bit Monochrome (with color palette tables)
+  - [x] 16-bit High Color Bitfields (RGB444, RGB555, RGB565)
+  - [x] OS/2 and legacy format support
+  - [x] RLE8 and RLE4 compression support
 
 - [ ] **PNG Reader**
   - [ ] Core DEFLATE decompression & filtering pipeline

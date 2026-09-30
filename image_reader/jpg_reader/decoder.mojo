@@ -336,7 +336,7 @@ struct JpgDecoder:
                         _ = parser.jpg_parse_dht()
                     else:
                         # Skip other markers (like APPn, COM, etc.) using their segment length
-                        var length = reader.u16()
+                        var length = reader.u16_be()
                         reader.skip(length - 2)
 
             if not found_nested_scan:

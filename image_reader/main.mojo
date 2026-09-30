@@ -1,6 +1,7 @@
 from std.sys import argv
 from std.pathlib import Path
 from image_reader.jpg_reader import JpegReader
+from image_reader.bmp_reader import BmpReader
 from image_reader.buffer import ImageBuffer
 from image_reader.output.ppm import PPMCodec
 from image_reader.output.pfm import PFMCodec
@@ -49,8 +50,8 @@ def parse_cli_args() raises -> CLIConfig:
         elif arg.startswith("--format="):
             output_format = arg[byte=9:].lower()
 
-            if output_format!="ppm" and output_format!="pgm" and output_format!="pfm":
-                raise Error("Unsupported format: " + output_format + ".\nSupported formats are: ppm, pgm, pfm")
+            if output_format!="ppm" and output_format!="pgm" and output_format!="pfm" and output_format!="pam":
+                raise Error("Unsupported format: " + output_format + ".\nSupported formats are: ppm, pgm, pfm, pam")
         elif arg.startswith("--grayscale"):
             grayscale = True
         elif arg.startswith("-"):
@@ -74,13 +75,21 @@ def parse_cli_args() raises -> CLIConfig:
         var length = output_path.byte_length()
         if length >= 4:
             var out_format = output_path[byte=length-4:].lower()
-            if out_format==".pgm" or out_format==".pfm":
+            if out_format==".pgm" or out_format==".pfm" or out_format==".pam":
                 output_format = String(out_format[byte=1:])
 
     if output_format=="":
         output_format = "ppm"
 
     return CLIConfig(input_path, output_path, precision, output_format, grayscale)
+
+def detect_format(ref bytes: List[UInt8]) -> String:
+    if bytes[0] == 0xFF and bytes[1] == 0xD8:
+        return "jpg"
+    if bytes[0] == 0x42 and bytes[1] == 0x4D:
+        return "bmp"
+
+    return ""
 
 def main():
     print("Initializing Modular Image Parser Pipeline...")
@@ -104,10 +113,20 @@ def main():
             return
 
         var bytes = path.read_bytes()
-        var reader = JpegReader(config.precision)
-        var opt_buffer = reader.read(bytes^)
+
+        var input_format = detect_format(bytes)
+        var opt_buffer: Optional[ImageBuffer]
+        if input_format=="jpg":
+            var reader = JpegReader(config.precision)
+            opt_buffer = reader.read(bytes^)
+        elif input_format=="bmp":
+            var reader = BmpReader(config.precision)
+            opt_buffer = reader.read(bytes^)
+        else:
+            raise Error("Unsupported format")
+
         if opt_buffer:
-            print("JPEG parsing completed successfully.")
+            print(input_format+" parsing completed successfully.")
 
             var output_path: String
             if config.output_path:
@@ -115,12 +134,12 @@ def main():
             else:
                 output_path = get_output_path(file_path_str, config.format)
 
-            if config.format=="ppm" or config.format=="pgm":
-                PPMCodec.save(opt_buffer.take(), output_path, config.precision, True if config.format=="pgm" or config.grayscale else False)
+            if config.format=="ppm" or config.format=="pgm" or config.format=="pam":
+                PPMCodec.save(opt_buffer.take(), output_path, config.precision, config.format, config.grayscale)
             elif config.format=="pfm":
                 PFMCodec.save(opt_buffer.take(), output_path, config.precision, config.grayscale)
         else:
-            print("JPEG parsing failed.")
+            print(input_format+" parsing failed.")
     except e:
         print("Execution failed: ", e)
 
