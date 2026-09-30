@@ -468,17 +468,12 @@ struct JpgDecoder:
     def refine_coefficient[origin: MutOrigin](
         mut bit_reader: BitReader,
         zigzag_idx: Int,
-        al: Int,
+        delta: Int16,
         p_block: Pointer[Int16, origin]
     ) raises -> Bool:
         var block_val = p_block.unsafe_offset(zigzag_idx).unsafe_load()
 
-        if block_val == 0:
-            return True
-
-        var delta = Int16(1 << al)
-
-        if (block_val & delta) != 0:
+        if block_val == 0 or (block_val & delta) != 0:
             return True
 
         var bit = bit_reader.bit()
@@ -486,10 +481,8 @@ struct JpgDecoder:
             return False
 
         if bit > 0:
-            if block_val > 0:
-                p_block.unsafe_offset(zigzag_idx).unsafe_store(block_val + delta)
-            else:
-                p_block.unsafe_offset(zigzag_idx).unsafe_store(block_val - delta)
+            var modifier = delta if block_val > 0 else -delta
+            p_block.unsafe_offset(zigzag_idx).unsafe_store(block_val + modifier)
 
         return True
 
@@ -504,9 +497,10 @@ struct JpgDecoder:
         al: Int,
         p_block: Pointer[Int16, origin]
     ) raises -> Bool:
-        #
+
+        var delta = Int16(1 << al)
+
         # Existing EOB run
-        #
         if scan_eob_run > 0:
             var k = ss
             while k <= se:
@@ -515,7 +509,7 @@ struct JpgDecoder:
                 if not JpgDecoder.refine_coefficient(
                     bit_reader,
                     zigzag_idx,
-                    al,
+                    delta,
                     p_block
                 ):
                     return False
@@ -557,7 +551,7 @@ struct JpgDecoder:
                             if not JpgDecoder.refine_coefficient(
                                 bit_reader,
                                 zigzag_idx,
-                                al,
+                                delta,
                                 p_block
                             ):
                                 return False
@@ -587,7 +581,7 @@ struct JpgDecoder:
                         if not JpgDecoder.refine_coefficient(
                             bit_reader,
                             zigzag_idx,
-                            al,
+                            delta,
                             p_block
                         ):
                             return False
@@ -613,7 +607,7 @@ struct JpgDecoder:
                     if not JpgDecoder.refine_coefficient(
                         bit_reader,
                         zigzag_idx,
-                        al,
+                        delta,
                         p_block
                     ):
                         return False
