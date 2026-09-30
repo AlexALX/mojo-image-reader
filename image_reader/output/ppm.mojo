@@ -96,4 +96,4 @@ struct PPMCodec:
             f.write_bytes(byte_stream)
 
         f.close()
-        print("Successfully saved color image to", filename)
+        print("Successfully saved image to", filename)
