@@ -69,7 +69,7 @@ Currently, the library features a robust **JPEG, PNG, GIF and BMP decoding pipel
 You can run the JPEG reader directly from the command line using `image_reader/main.mojo`. It supports custom precision and output formats (`ppm`, `pgm` or `pfm`):
 
 ```bash
-mojo image_reader/main.mojo input.jpg output.ppm --precision=8 --format=ppm --grayscale
+mojo image_reader/main.mojo input.jpg output.ppm --precision=8 --format=ppm --grayscale --frame=0
 ```
 
 ### 2. NumPy & Python Integration
