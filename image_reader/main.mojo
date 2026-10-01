@@ -12,13 +12,15 @@ struct CLIConfig:
     var precision: Int
     var format: String
     var grayscale: Bool
+    var frame: Int
 
-    def __init__(out self, input_path: String, output_path: String, precision: Int, output_format: String, grayscale: Bool):
+    def __init__(out self, input_path: String, output_path: String, precision: Int, output_format: String, grayscale: Bool, frame: Int):
         self.input_path = input_path
         self.output_path = output_path
         self.precision = precision
         self.format = output_format
         self.grayscale = grayscale
+        self.frame = frame
 
 def parse_cli_args() raises -> CLIConfig:
     """
@@ -33,6 +35,7 @@ def parse_cli_args() raises -> CLIConfig:
     var precision = 8 # Default precision
     var output_format = ""
     var grayscale = False
+    var frame = 0
 
     var i = 1
     while i < len(args):
@@ -54,6 +57,15 @@ def parse_cli_args() raises -> CLIConfig:
                 raise Error("Unsupported format: " + output_format + ".\nSupported formats are: ppm, pgm, pfm, pam")
         elif arg.startswith("--grayscale"):
             grayscale = True
+        elif arg.startswith("--frame="):
+            var val_str = arg[byte=8:]
+            try:
+                frame = atol(val_str)
+            except:
+                frame = -1
+
+            if frame < 0:
+                raise Error("Invalid frame value: " + val_str)
         elif arg.startswith("-"):
             print("Warning: Unknown flag:", arg)
         else:
@@ -67,7 +79,7 @@ def parse_cli_args() raises -> CLIConfig:
 
     # Check if the user provided the required file path argument
     if input_path == "":
-        print("Usage: mojo image_reader/main.mojo <image> [output.ppm] [--precision=12] [--format=pfm] [--grayscale]")
+        print("Usage: mojo image_reader/main.mojo <image> [output.ppm] [--precision=12] [--format=pfm] [--grayscale] [--frame=0]")
         raise Error("Error: Missing file path argument!")
 
     # automatically detect if not specified
@@ -81,7 +93,7 @@ def parse_cli_args() raises -> CLIConfig:
     if output_format=="":
         output_format = "ppm"
 
-    return CLIConfig(input_path, output_path, precision, output_format, grayscale)
+    return CLIConfig(input_path, output_path, precision, output_format, grayscale, frame)
 
 def main():
     print("Initializing Modular Image Parser Pipeline...")
@@ -98,7 +110,7 @@ def main():
     var file_path_str = config.input_path
 
     try:
-        var reader = ImageReader(config.precision)
+        var reader = ImageReader(config.precision, config.frame)
         var opt_buffer = reader.readfile(file_path_str)
 
         if opt_buffer:

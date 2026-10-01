@@ -2,7 +2,7 @@
 
 A high-performance, native **Mojo v1.0+** library for reading and processing image formats. Designed with a modular architecture for low memory footprint, zero-overhead raw pointer memory access, and seamless interoperability with Python and NumPy.
 
-Currently, the library features a robust **JPEG, PNG and BMP decoding pipelines** along with PPM/PFM/PAM format exporters and Python/NumPy interoperability.
+Currently, the library features a robust **JPEG, PNG, GIF and BMP decoding pipelines** along with **PPM/PFM/PAM** format exporters and **Python/NumPy** interoperability.
 
 ## 🚀 Key Features
 
@@ -12,6 +12,8 @@ Currently, the library features a robust **JPEG, PNG and BMP decoding pipelines*
   * Full Chroma Subsampling support: **4:4:4, 4:2:2, 4:2:0, and 4:2:0v**.
   * Grayscale JPEG (1-component) support.
   * Restart Marker support with automatic stream resynchronization.
+  * SIMD accelerated pipeline for JPG dequantization.
+  * IDCT Core: High-precision 2D Floating-Point IDCT based on the Loeffler (LLM) butterfly algorithm, fully vectorized using 8-lane SIMD.
 * **Core BMP Support**
   * Standard `BITMAPINFOHEADER` parser & DIB header handling
   * **Truecolor**: 24-bit RGB and 32-bit RGB/RGBA (`v5`)
@@ -25,10 +27,14 @@ Currently, the library features a robust **JPEG, PNG and BMP decoding pipelines*
   * **Bit Depth Precision**: 8-bit and 16-bit channel depth support.
   * **Full Color Type Coverage**: Grayscale, Truecolor (RGB), Indexed-color (Palette), Grayscale + Alpha, and Truecolor + Alpha (RGBA).
   * **Adam7 Interlacing**: Full 7-pass interlaced PNG stream decoding.
+* **Core GIF Support**:
+  * **LZW Decompression**: Fast dictionary-based LZW stream decoding.
+  * **Color Tables**: Global (GCT) & Local (LCT) palettes with 32-bit RGBA LUT.
+  * **Multi-Frame & Metadata**: Frame extraction, per-frame delays, transparency, Disposal Methods (0–3), and Netscape looping metadata.
+  * **Interlacing**: Full 4-pass interlaced GIF decoding.
 * **Performance & Memory Optimizations**:
   * Built with raw pointer arithmetic (`Pointer`) to completely bypass bounds-checking and lifetime tracking overhead in hot loops.
-  * SIMD accelerated pipeline for JPG dequantization.
-  * IDCT Core: High-precision 2D Floating-Point IDCT based on the Loeffler (LLM) butterfly algorithm, fully vectorized using 8-lane SIMD.
+  * **SIMD Acceleration**: Hardware-adaptive vectorization applied where applicable across decoder pipelines.
 * **Flexible Export & Interoperability**:
   * **PAM Exporter**: Supports 8-bit and 12/16-bit export with alpha channel (`P7`).
   * **PPM Exporter**: Supports 8-bit and 12/16-bit integer color depths (`P6`).
@@ -139,11 +145,11 @@ mojo -I . tests/jpg_reader/test_assemble.mojo
   - [x] Color types: Grayscale, Truecolor, Indexed, and Alpha channel (RGBA)
   - [x] Adam7 interlace support
 
-- [ ] **GIF Reader**
-  - [ ] LZW decompression algorithm
-  - [ ] Global and local color table parsing
-  - [ ] Frame control: Disposal methods, transparency, and delay parsing
-  - [ ] Static frame extraction (and full animation support)
+- [x] **GIF Reader**
+  - [x] LZW decompression algorithm
+  - [x] Global and local color table parsing
+  - [x] Frame control: Disposal methods, transparency, and delay parsing
+  - [x] Static frame extraction
 
 ## 📄 License
 
