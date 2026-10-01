@@ -1,6 +1,7 @@
 from image_reader import ImageBuffer
 from image_reader.jpg_reader import JpegReader
 from image_reader.bmp_reader import BmpReader
+from image_reader.png_reader import PngReader
 from std.pathlib import Path
 
 trait ImageReaderTrait:
@@ -32,6 +33,9 @@ struct ImageReader(ImageReaderTrait):
         elif self.format=="bmp":
             var reader = BmpReader(self.precision)
             opt_buffer = reader.read(bytes^)
+        elif self.format=="png":
+            var reader = PngReader(self.precision)
+            opt_buffer = reader.read(bytes^)
         else:
             raise Error("Unsupported format")
 
@@ -40,7 +44,9 @@ struct ImageReader(ImageReaderTrait):
     def detect_format(self, ref bytes: List[UInt8]) -> String:
         if bytes[0] == 0xFF and bytes[1] == 0xD8:
             return "jpg"
-        if bytes[0] == 0x42 and bytes[1] == 0x4D:
+        elif bytes[0] == 0x42 and bytes[1] == 0x4D:
             return "bmp"
+        elif bytes[0] == 0x89 and bytes[1] == 0x50 and bytes[2] == 0x4E and bytes[3] == 0x47:
+            return "png"
 
         return ""

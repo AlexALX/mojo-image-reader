@@ -38,8 +38,7 @@ struct PPMCodec:
 
         if precision <= 8:
             if format=="pam":
-
-                if grayscale:
+                if grayscale or buffer.grayscale:
                     if buffer.has_alpha:
                         f.write_bytes(buffer.take_grayscale[with_alpha = True]())
                     else:
@@ -63,7 +62,7 @@ struct PPMCodec:
             var data: List[UInt16]
             if format=="pam":
 
-                if grayscale:
+                if grayscale or buffer.grayscale:
                     if buffer.has_alpha:
                         data = buffer.take_grayscale_16bit[with_alpha = True]()
                     else:

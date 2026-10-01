@@ -2,7 +2,7 @@
 
 A high-performance, native **Mojo v1.0+** library for reading and processing image formats. Designed with a modular architecture for low memory footprint, zero-overhead raw pointer memory access, and seamless interoperability with Python and NumPy.
 
-Currently, the library features a robust **JPEG & BMP decoding pipeline** along with PPM/PFM/PAM format exporters and Python/NumPy interoperability.
+Currently, the library features a robust **JPEG, PNG and BMP decoding pipelines** along with PPM/PFM/PAM format exporters and Python/NumPy interoperability.
 
 ## 🚀 Key Features
 
@@ -20,6 +20,11 @@ Currently, the library features a robust **JPEG & BMP decoding pipeline** along 
   * **Compression**: `RLE8` and `RLE4` support
   * Legacy and **OS/2** format support
   * SIMD acceleration for 8 and 32 bit BMP
+* **Core PNG Support**:
+  * High-performance DEFLATE (ZLIB) decompression & filtering pipeline.
+  * **Bit Depth Precision**: 8-bit and 16-bit channel depth support.
+  * **Full Color Type Coverage**: Grayscale, Truecolor (RGB), Indexed-color (Palette), Grayscale + Alpha, and Truecolor + Alpha (RGBA).
+  * **Adam7 Interlacing**: Full 7-pass interlaced PNG stream decoding.
 * **Performance & Memory Optimizations**:
   * Built with raw pointer arithmetic (`Pointer`) to completely bypass bounds-checking and lifetime tracking overhead in hot loops.
   * SIMD accelerated pipeline for JPG dequantization.
@@ -128,11 +133,11 @@ mojo -I . tests/jpg_reader/test_assemble.mojo
   - [x] RLE8 and RLE4 compression support
   - [x] SIMD acceleration (8/32 bit BMP)
 
-- [ ] **PNG Reader**
-  - [ ] Core DEFLATE decompression & filtering pipeline
-  - [ ] Bit depth support: 8-bit and 16-bit precision
-  - [ ] Color types: Grayscale, Truecolor, Indexed, and Alpha channel (RGBA)
-  - [ ] Adam7 interlace support
+- [x] **PNG Reader**
+  - [x] Core DEFLATE decompression & filtering pipeline
+  - [x] Bit depth support: 8-bit and 16-bit precision
+  - [x] Color types: Grayscale, Truecolor, Indexed, and Alpha channel (RGBA)
+  - [x] Adam7 interlace support
 
 - [ ] **GIF Reader**
   - [ ] LZW decompression algorithm
