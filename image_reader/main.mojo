@@ -3,8 +3,7 @@ from std.pathlib import Path
 from image_reader.jpg_reader import JpegReader
 from image_reader.bmp_reader import BmpReader
 from image_reader import ImageBuffer, ImageReader
-from image_reader.output.ppm import PPMCodec
-from image_reader.output.pfm import PFMCodec
+from image_reader.output import PPMCodec, PFMCodec
 
 struct CLIConfig:
     var input_path: String
