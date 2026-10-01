@@ -14,10 +14,10 @@ struct GifLZWDecoder:
     def decompress(mut self, ref lzw_data: List[UInt8], min_code_size: Int, expected_pixels: Int) raises -> List[UInt8]:
         var out_pixels = List[UInt8](unsafe_uninit_length=expected_pixels)
 
-        var out_ptr = Pointer[UInt8](out_pixels.unsafe_ptr())
-        var prefix_ptr = Pointer[Int16](self.prefix.unsafe_ptr())
-        var suffix_ptr = Pointer[UInt8](self.suffix.unsafe_ptr())
-        var stack_ptr = Pointer[UInt8](self.stack.unsafe_ptr())
+        var out_ptr = out_pixels.unsafe_ptr()
+        var prefix_ptr = self.prefix.unsafe_ptr()
+        var suffix_ptr = self.suffix.unsafe_ptr()
+        var stack_ptr = self.stack.unsafe_ptr()
 
         var clear_code = 1 << min_code_size
         var eoi_code = clear_code + 1

@@ -33,7 +33,7 @@ struct GifDecoder:
     ):
         # Build 32-bit LUT palette (256 UInt32 values)
         var lut = List[UInt32](unsafe_uninit_length=256)
-        var lut_ptr = Pointer[UInt32](lut.unsafe_ptr())
+        var lut_ptr = lut.unsafe_ptr()
 
         # Keep separate branches to respect pointer origins and mutability rules in Mojo's borrow checker
         if global_palette:
@@ -61,8 +61,8 @@ struct GifDecoder:
                 else:
                     lut_ptr.unsafe_offset(i).unsafe_store(0)
 
-        var canvas_32 = Pointer[UInt32](self.canvas.unsafe_ptr().unsafe_bitcast[UInt32]())
-        var src_ptr = Pointer[UInt8](pixels.unsafe_ptr())
+        var canvas_32 = self.canvas.unsafe_ptr().unsafe_bitcast[UInt32]()
+        var src_ptr = pixels.unsafe_ptr()
 
         var global_w = self.parser.global_width
         var global_h = self.parser.global_height
@@ -173,8 +173,8 @@ struct GifDecoder:
             var total_elements = len(self.canvas)
             frame_buffer.data_u16.resize(unsafe_uninit_length=total_elements)
 
-            var dst_ptr = Pointer[UInt16](frame_buffer.data_u16.unsafe_ptr())
-            var src_ptr = Pointer[UInt8](self.canvas.unsafe_ptr())
+            var dst_ptr = frame_buffer.data_u16.unsafe_ptr()
+            var src_ptr = self.canvas.unsafe_ptr()
 
             comptime simd_w8 = simd_width_of[DType.uint8]()
             var vec_len = (total_elements // simd_w8) * simd_w8
@@ -204,7 +204,7 @@ struct GifDecoder:
 
         # Disposal Method 2 (Restore to background) using SIMD
         if current_disposal == 2:
-            var clear_32 = Pointer[UInt32](self.canvas.unsafe_ptr().unsafe_bitcast[UInt32]())
+            var clear_32 = self.canvas.unsafe_ptr().unsafe_bitcast[UInt32]()
             var gw = self.parser.global_width
             var gh = self.parser.global_height
 
@@ -256,7 +256,7 @@ struct GifDecoder:
             var bg_b = UInt32(self.parser.global_palette[bg_idx * 3 + 2])
             bg_color = bg_r | (bg_g << 8) | (bg_b << 16)
 
-        var c_ptr32 = Pointer[UInt32](self.canvas.unsafe_ptr().unsafe_bitcast[UInt32]())
+        var c_ptr32 = self.canvas.unsafe_ptr().unsafe_bitcast[UInt32]()
         var total_pixels = self.parser.global_width * self.parser.global_height
 
         comptime simd_w32 = simd_width_of[DType.uint32]()
