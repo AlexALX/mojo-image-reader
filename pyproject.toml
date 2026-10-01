@@ -1,9 +1,10 @@
 [project]
 name = "image_reader"
 version = "1.0.0"
-description = "Image decoders written in Mojo 1.0"
+description = "High-performance Mojo-native image decoding library"
+authors = [{ name = "AlexALX" }]
 dependencies = [
-    "mojo==1.0",
+    "mojo>=1.0.0",
 ]
 
 [tool.mojo]
