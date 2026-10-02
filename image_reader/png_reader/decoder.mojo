@@ -17,6 +17,7 @@ struct PngDecoder:
     var filter_method: Int
 
     var palette: List[UInt8]
+    var transparency_palette: List[UInt8]
     var idat_data: List[UInt8]
 
     def __init__(out self: Self, var bytes: List[UInt8], precision: Int = 8):
@@ -32,6 +33,7 @@ struct PngDecoder:
         self.compression_method = 0
         self.filter_method = 0
         self.palette = List[UInt8]()
+        self.transparency_palette = List[UInt8]()
         self.idat_data = List[UInt8]()
 
     def verify_signature(mut self) raises:
@@ -80,9 +82,15 @@ struct PngDecoder:
 
             # 0x504C5445 -> "PLTE"
             elif chunk_type == 0x504C5445:
-                self.palette.reserve(length)
-                for _ in range(length):
-                    self.palette.append(self.reader.u8_uint())
+                self.palette.resize(unsafe_uninit_length=length)
+                for i in range(length):
+                    self.palette.unsafe_set(i, self.reader.u8_uint())
+
+            # 0x74524E53 -> "tRNS"
+            elif chunk_type == 0x74524E53:
+                self.transparency_palette.resize(unsafe_uninit_length=length)
+                for i in range(length):
+                    self.transparency_palette.unsafe_set(i, self.reader.u8_uint())
 
             # 0x49444154 -> "IDAT"
             elif chunk_type == 0x49444154:
@@ -101,7 +109,15 @@ struct PngDecoder:
             # Skip unhandled chunk data and 4-byte CRC
             self.reader.seek(chunk_data_pos + length + 4)
 
+    @always_inline
     def decode_image(mut self) raises -> ImageBuffer:
+        """Main entry point to parse PNG and return standard ImageBuffer."""
+        if len(self.transparency_palette) > 0:
+            return self.decode_image[has_transparency=True]()
+        else:
+            return self.decode_image[has_transparency=False]()
+
+    def decode_image[has_transparency: Bool = False](mut self) raises -> ImageBuffer:
         """Main entry point to parse PNG and return standard ImageBuffer."""
 
         if len(self.idat_data) == 0:
@@ -190,6 +206,9 @@ struct PngDecoder:
         # 4. Construct output ImageBuffer (palette / 16-bit / precision scaling)
         var out_channels = 3 if self.color_type == 3 else self.channels
 
+        if self.color_type == 3:
+            out_channels = 4 if has_transparency else 3
+
         var img_buffer = ImageBuffer(
             width=self.width,
             height=self.height,
@@ -210,20 +229,31 @@ struct PngDecoder:
             if is_16bit:
                 for src_idx in range(len(unfiltered)):
                     var pal_idx = Int(unfiltered[src_idx]) * 3
-                    var r = UInt16(self.palette[pal_idx]) << bit_shift_scale
-                    var g = UInt16(self.palette[pal_idx + 1]) << bit_shift_scale
-                    var b = UInt16(self.palette[pal_idx + 2]) << bit_shift_scale
+                    var r = UInt16(self.palette.unsafe_get(pal_idx)) << bit_shift_scale
+                    var g = UInt16(self.palette.unsafe_get(pal_idx + 1)) << bit_shift_scale
+                    var b = UInt16(self.palette.unsafe_get(pal_idx + 2)) << bit_shift_scale
                     img_buffer.data_u16.unsafe_set(dest_idx, r)
                     img_buffer.data_u16.unsafe_set(dest_idx + 1, g)
                     img_buffer.data_u16.unsafe_set(dest_idx + 2, b)
-                    dest_idx += 3
+
+                    if has_transparency:
+                        var a_u8 = self.transparency_palette.unsafe_get(pal_idx) if pal_idx < len(self.transparency_palette) else 255
+                        img_buffer.data_u16.unsafe_set(dest_idx + 3, UInt16(a_u8) << bit_shift_scale)
+                        dest_idx += 4
+                    else:
+                        dest_idx += 3
             else:
                 for src_idx in range(len(unfiltered)):
                     var pal_idx = Int(unfiltered[src_idx]) * 3
-                    img_buffer.data_u8.unsafe_set(dest_idx, self.palette[pal_idx])
-                    img_buffer.data_u8.unsafe_set(dest_idx + 1, self.palette[pal_idx + 1])
-                    img_buffer.data_u8.unsafe_set(dest_idx + 2, self.palette[pal_idx + 2])
-                    dest_idx += 3
+                    img_buffer.data_u8.unsafe_set(dest_idx, self.palette.unsafe_get(pal_idx))
+                    img_buffer.data_u8.unsafe_set(dest_idx + 1, self.palette.unsafe_get(pal_idx + 1))
+                    img_buffer.data_u8.unsafe_set(dest_idx + 2, self.palette.unsafe_get(pal_idx + 2))
+                    if has_transparency:
+                        var a_u8 = self.transparency_palette.unsafe_get(pal_idx) if pal_idx < len(self.transparency_palette) else 255
+                        img_buffer.data_u8.unsafe_set(dest_idx + 3, a_u8)
+                        dest_idx += 4
+                    else:
+                        dest_idx += 3
 
         else:
             if self.bit_depth > 8:
