@@ -298,7 +298,7 @@ struct ImageDrawer:
         for y in range(height):
             var cb_row_offset: Int = 0
             var cr_row_offset: Int = 0
-            var y_row_base: Int = 0
+            var y_row_base = y * width
 
             var cb_y0_off: Int = 0
             var cb_y1_off: Int = 0
@@ -313,7 +313,6 @@ struct ImageDrawer:
             if not is_grayscale:
                 cb_row_offset = cb_row_offsets.unsafe_get(y)
                 cr_row_offset = cr_row_offsets.unsafe_get(y)
-                y_row_base = y * width
 
                 if not is_fast:
                     cb_y0_off = cb_y0_map.unsafe_get(y)

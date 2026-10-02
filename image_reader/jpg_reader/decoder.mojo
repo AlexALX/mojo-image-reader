@@ -223,8 +223,28 @@ struct JpgDecoder:
             var is_single = parser.scan_is_single_component
             var scan_mcu_count = parser.scan_mcu_count
 
+            var mcu_since_restart = 0
+            var restart_interval = parser.restart_interval
+
             # Scan loop over MCU / blocks
             for scan_mcu in range(scan_mcu_count):
+
+                if restart_interval > 0 and mcu_since_restart >= restart_interval:
+                    self.parser.bit_reader.align()
+
+                    if parser.bit_reader.restart_marker==0:
+                        var b = self.parser.bit_reader.read_byte()
+                        while b == 0xFF:
+                            b = self.parser.bit_reader.read_byte()
+
+                    parser.bit_reader.restart_marker = 0
+
+                    self.parser.scan_eob_run = 0
+                    for i in range(len(prev_dcs)):
+                        prev_dcs[i] = 0
+
+                    mcu_since_restart = 0
+
                 for comp_idx in range(len(parser.frame_components)):
                     var comp_id = parser.frame_components[comp_idx]
                     ref comp_info = parser.components[comp_id]
@@ -292,6 +312,8 @@ struct JpgDecoder:
                                         p_block
                                     )
 
+                mcu_since_restart += 1
+
             # Align stream after entropy scan block
             parser.bit_reader.align()
 
@@ -303,8 +325,8 @@ struct JpgDecoder:
 
                 var b: Int
 
-                if parser.bit_reader.early_marker:
-                    b = (parser.bit_reader.early_marker >> 8) & 0xFF
+                if parser.bit_reader.early_marker or parser.bit_reader.restart_marker:
+                    b = 0xFF
                 else:
                     b = reader.u8()
 
@@ -314,6 +336,9 @@ struct JpgDecoder:
                     if parser.bit_reader.early_marker:
                         marker = parser.bit_reader.early_marker & 0xFF
                         parser.bit_reader.early_marker = 0
+                    elif parser.bit_reader.restart_marker != 0:
+                        marker = parser.bit_reader.restart_marker
+                        parser.bit_reader.restart_marker = 0
                     else:
                         marker = reader.u8()
 
