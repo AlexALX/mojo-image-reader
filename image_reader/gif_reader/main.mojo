@@ -22,7 +22,7 @@ struct GifReader(ImageReaderTrait):
 		else:
 			frames = decoder.decode_frames[False]()
 
-		if len(frames)<self.frame:
+		if len(frames)<=self.frame:
 			raise Error("Invalid frame, frames in this file: ", len(frames), "\nFrame index start from zero.")
 
 		var frame = frames.pop(self.frame)
