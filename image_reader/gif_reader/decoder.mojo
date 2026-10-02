@@ -13,8 +13,20 @@ struct GifDecoder:
     var lzw: GifLZWDecoder
     var global_lut: List[UInt32]
 
+    var prev_disposal: Int
+    var prev_x: Int
+    var prev_y: Int
+    var prev_w: Int
+    var prev_h: Int
+
     def __init__(out self, var parser: GifParser) raises:
         self.parser = parser^
+
+        self.prev_disposal = 0
+        self.prev_x = 0
+        self.prev_y = 0
+        self.prev_w = 0
+        self.prev_h = 0
 
         var total_bytes = self.parser.global_width * self.parser.global_height * 4
         self.canvas = List[UInt8](unsafe_uninit_length=total_bytes)
@@ -170,6 +182,11 @@ struct GifDecoder:
         # Decompress LZW pixels
         var pixels = self.lzw.decompress(lzw_data^, min_code_size, frame_w * frame_h)
 
+        self.prev_x = frame_x
+        self.prev_y = frame_y
+        self.prev_w = frame_w
+        self.prev_h = frame_h
+
         # Backup canvas without unnecessary reallocations
         if current_disposal == 3:
             self.backup_canvas.resize(unsafe_uninit_length=len(self.canvas))
@@ -217,44 +234,7 @@ struct GifDecoder:
                     var val = UInt16(src_ptr.unsafe_offset(i).unsafe_load())
                     dst_ptr.unsafe_offset(i).unsafe_store(val << scale_shift)
 
-        var frame = GifFrame(frame_buffer^, current_delay, current_disposal)
-
-        # Disposal Method 2 (Restore to background) using SIMD
-        if current_disposal == 2:
-            var clear_32 = self.canvas.unsafe_ptr().unsafe_bitcast[UInt32]()
-            var gw = self.parser.global_width
-            var gh = self.parser.global_height
-
-            var bg_color: UInt32 = 0
-            var bg_idx = Int(self.parser.background_index)
-            if len(self.parser.global_palette) > bg_idx * 3 + 2:
-                if not (trans_flag and UInt8(bg_idx) == trans_idx):
-                    var bg_r = UInt32(self.parser.global_palette[bg_idx * 3])
-                    var bg_g = UInt32(self.parser.global_palette[bg_idx * 3 + 1])
-                    var bg_b = UInt32(self.parser.global_palette[bg_idx * 3 + 2])
-                    bg_color = bg_r | (bg_g << 8) | (bg_b << 16)
-
-            var start_y = min(frame_y, gh)
-            var end_y = min(frame_y + frame_h, gh)
-            var valid_w = 0
-            if frame_x < gw:
-                valid_w = min(frame_w, gw - frame_x)
-
-            comptime simd_w32 = simd_width_of[DType.uint32]()
-            var bg_vec = SIMD[DType.uint32, simd_w32](bg_color)
-            var vec_w = (valid_w // simd_w32) * simd_w32
-
-            for cy in range(start_y, end_y):
-                var row_offset = cy * gw + frame_x
-                for cx in range(0, vec_w, simd_w32):
-                    clear_32.unsafe_offset(row_offset + cx).unsafe_store[width=simd_w32](bg_vec)
-                for cx in range(vec_w, valid_w):
-                    clear_32.unsafe_offset(row_offset + cx).unsafe_store(bg_color)
-
-        elif current_disposal == 3: # Restore from backup
-            unsafe_memcpy(dest=self.canvas.unsafe_ptr(), src=self.backup_canvas.unsafe_ptr(), count=len(self.canvas))
-
-        return frame^
+        return GifFrame(frame_buffer^, current_delay, current_disposal)
 
     def decode_frames[only_first: Bool = True](mut self) raises -> List[GifFrame]:
         var frames = List[GifFrame]()
@@ -327,8 +307,50 @@ struct GifDecoder:
                     _ = self.parser.read_sub_blocks()
 
             elif block_type == 0x2C: # Image Descriptor
+
+                # Disposal Method 2 (Restore to background) using SIMD
+                if self.prev_disposal == 2:
+                    var clear_32 = self.canvas.unsafe_ptr().unsafe_bitcast[UInt32]()
+                    var gw = self.parser.global_width
+                    var gh = self.parser.global_height
+
+                    var bg_color: UInt32 = 0
+                    var bg_idx = Int(self.parser.background_index)
+                    if len(self.parser.global_palette) > bg_idx * 3 + 2:
+                        if not (trans_flag and UInt8(bg_idx) == trans_idx):
+                            var bg_r = UInt32(self.parser.global_palette[bg_idx * 3])
+                            var bg_g = UInt32(self.parser.global_palette[bg_idx * 3 + 1])
+                            var bg_b = UInt32(self.parser.global_palette[bg_idx * 3 + 2])
+                            bg_color = bg_r | (bg_g << 8) | (bg_b << 16)
+
+                    var start_y = min(self.prev_y, gh)
+                    var end_y = min(self.prev_y + self.prev_h, gh)
+                    var valid_w = 0
+                    if self.prev_x < gw:
+                        valid_w = min(self.prev_w, gw - self.prev_x)
+
+                    comptime simd_w32 = simd_width_of[DType.uint32]()
+                    var bg_vec = SIMD[DType.uint32, simd_w32](bg_color)
+                    var vec_w = (valid_w // simd_w32) * simd_w32
+
+                    for cy in range(start_y, end_y):
+                        var row_offset = cy * gw + self.prev_x
+                        for cx in range(0, vec_w, simd_w32):
+                            clear_32.unsafe_offset(row_offset + cx).unsafe_store[width=simd_w32](bg_vec)
+                        for cx in range(vec_w, valid_w):
+                            clear_32.unsafe_offset(row_offset + cx).unsafe_store(bg_color)
+
+                elif self.prev_disposal == 3: # Restore from backup
+                    unsafe_memcpy(dest=self.canvas.unsafe_ptr(), src=self.backup_canvas.unsafe_ptr(), count=len(self.canvas))
+
                 var frame = self.decode_frame(current_disposal, current_delay, trans_flag, trans_idx)
                 frames.append(frame^)
+
+                self.prev_disposal = current_disposal
+
+                current_disposal = 1
+                trans_flag = False
+                trans_idx = 0
 
                 if only_first:
                     break
