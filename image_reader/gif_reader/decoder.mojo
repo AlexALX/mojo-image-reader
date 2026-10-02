@@ -23,7 +23,7 @@ struct GifDecoder:
         self.global_lut = List[UInt32](unsafe_uninit_length=256)
 
         var lut_ptr = self.global_lut.unsafe_ptr()
-        var pal_ptr = Pointer[UInt8](self.parser.global_palette.unsafe_ptr())
+        var pal_ptr = self.parser.global_palette.unsafe_ptr()
         var pal_len = len(self.parser.global_palette)
 
         # Build 32-bit LUT palette (256 UInt32 values)
@@ -47,7 +47,25 @@ struct GifDecoder:
         frame_x: Int, frame_y: Int, frame_w: Int, frame_h: Int,
         trans_flag: Bool, trans_idx: UInt8, interlace: Bool
     ):
-        var lut_ptr = self.global_lut.unsafe_ptr()
+        # Build 32-bit LUT palette (256 UInt32 values)
+        var lut = List[UInt32](unsafe_uninit_length=256)
+        var lut_ptr = lut.unsafe_ptr()
+
+        # Keep separate branches to respect pointer origins and mutability rules in Mojo's borrow checker
+        if global_palette:
+            lut = self.global_lut.copy()
+        else:
+            var pal_ptr = Pointer[UInt8](palette.unsafe_ptr())
+            var pal_len = len(palette)
+
+            for i in range(256):
+                if i * 3 + 2 < pal_len:
+                    var r = UInt32(pal_ptr.unsafe_offset(i * 3).unsafe_load())
+                    var g = UInt32(pal_ptr.unsafe_offset(i * 3 + 1).unsafe_load())
+                    var b = UInt32(pal_ptr.unsafe_offset(i * 3 + 2).unsafe_load())
+                    lut_ptr.unsafe_offset(i).unsafe_store(r | (g << 8) | (b << 16) | 0xFF000000)
+                else:
+                    lut_ptr.unsafe_offset(i).unsafe_store(0)
 
         var canvas_32 = self.canvas.unsafe_ptr().unsafe_bitcast[UInt32]()
         var src_ptr = pixels.unsafe_ptr()

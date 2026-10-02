@@ -39,11 +39,11 @@ struct GifParser:
         var gct_size = 1 << ((packed & 0x07) + 1)
 
         if has_gct:
-            self.global_palette.reserve(gct_size * 3)
-            for _ in range(gct_size):
-                self.global_palette.append(self.reader.u8_uint())
-                self.global_palette.append(self.reader.u8_uint())
-                self.global_palette.append(self.reader.u8_uint())
+            self.global_palette.resize(unsafe_uninit_length=gct_size * 3)
+            for i in range(gct_size):
+                self.global_palette.unsafe_set(i * 3, self.reader.u8_uint())
+                self.global_palette.unsafe_set(i * 3 + 1, self.reader.u8_uint())
+                self.global_palette.unsafe_set(i * 3 + 2, self.reader.u8_uint())
 
     def read_sub_blocks(mut self) -> List[UInt8]:
         var data = List[UInt8](capacity=8192)
