@@ -51,10 +51,10 @@ struct GifDecoder:
         var lut = List[UInt32](unsafe_uninit_length=256)
         var lut_ptr = lut.unsafe_ptr()
 
+        var global_lut_ptr = self.global_lut.unsafe_ptr()
+
         # Keep separate branches to respect pointer origins and mutability rules in Mojo's borrow checker
-        if global_palette:
-            lut = self.global_lut.copy()
-        else:
+        if not global_palette:
             var pal_ptr = Pointer[UInt8](palette.unsafe_ptr())
             var pal_len = len(palette)
 
@@ -111,16 +111,23 @@ struct GifDecoder:
                     var color_idx = src_ptr.unsafe_offset(idx).unsafe_load()
                     idx += 1
                     if color_idx != trans_idx:
-                        canvas_32.unsafe_offset(row_offset + x).unsafe_store(
-                            lut_ptr.unsafe_offset(Int(color_idx)).unsafe_load()
-                        )
+                        var color: UInt32
+                        if global_palette:
+                            color = global_lut_ptr.unsafe_offset(Int(color_idx)).unsafe_load()
+                        else:
+                            color = lut_ptr.unsafe_offset(Int(color_idx)).unsafe_load()
+                        canvas_32.unsafe_offset(row_offset + x).unsafe_store(color)
             else:
                 # SIMD Gather path for non-transparent pixels
                 var vec_valid_w = (valid_w // simd_w32) * simd_w32
                 for x in range(0, vec_valid_w, simd_w32):
                     var indices = src_ptr.unsafe_offset(idx + x).unsafe_load[width=simd_w32]()
                     var offset_vec = indices.cast[DType.uint8]()
-                    var colors = lut_ptr.unsafe_gather(offset_vec)
+                    var colors: SIMD[DType.uint32, simd_w32]
+                    if global_palette:
+                        colors = global_lut_ptr.unsafe_gather(offset_vec)
+                    else:
+                        colors = lut_ptr.unsafe_gather(offset_vec)
                     canvas_32.unsafe_offset(row_offset + x).unsafe_store[width=simd_w32](colors)
 
                 idx += vec_valid_w
@@ -129,9 +136,13 @@ struct GifDecoder:
                 for x in range(vec_valid_w, valid_w):
                     var color_idx = src_ptr.unsafe_offset(idx).unsafe_load()
                     idx += 1
-                    canvas_32.unsafe_offset(row_offset + x).unsafe_store(
-                        lut_ptr.unsafe_offset(Int(color_idx)).unsafe_load()
-                    )
+
+                    var color: UInt32
+                    if global_palette:
+                        color = global_lut_ptr.unsafe_offset(Int(color_idx)).unsafe_load()
+                    else:
+                        color = lut_ptr.unsafe_offset(Int(color_idx)).unsafe_load()
+                    canvas_32.unsafe_offset(row_offset + x).unsafe_store(color)
 
             # Skip pixels exceeding right boundary
             idx += (frame_w - valid_w)
