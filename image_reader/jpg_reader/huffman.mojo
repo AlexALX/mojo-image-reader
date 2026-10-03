@@ -58,18 +58,21 @@ struct HuffmanTable:
 
                     if base_code + num_entries <= 1024:
                         for i in range(num_entries):
-                            self.fast_lookup[base_code + i] = packed_val
+                            self.fast_lookup.unsafe_set(base_code + i, packed_val)
 
                 # Fallback for rare long codes or insufficient bits
                 var lookup_key = (bits << 16) + code
-                self.fallback_keys.append(lookup_key)
-                self.fallback_vals.append(symbol)
+                self.fallback_keys.unsafe_set(index, lookup_key)
+                self.fallback_vals.unsafe_set(index, symbol)
 
                 code += 1
                 index += 1
 
             # Shift code left for the next bit length tier
             code <<= 1
+
+        self.fallback_keys.resize(unsafe_uninit_length=index)
+        self.fallback_vals.resize(unsafe_uninit_length=index)
 
         self.max_bits = max_bits_val
 
@@ -80,16 +83,17 @@ struct HuffmanTable:
         Uses a highly cache-friendly linear search for slow paths.
         """
 
-        if bitreader.restart_marker:
-            return -2
-
-        if bitreader.early_marker:
-            return -1
-
         var found_marker = 0
 
         # Ensure we have at least 10 bits in the bit_buffer
         while bitreader.bit_count < 10:
+
+            if bitreader.restart_marker:
+                return -2
+
+            if bitreader.early_marker:
+                return -1
+
             var byte = bitreader.read_byte()
             if byte < 0:
                 found_marker = byte
@@ -101,7 +105,7 @@ struct HuffmanTable:
         # If we have at least 10 bits, do a fast O(1) array lookup
         if bitreader.bit_count >= 10:
             var peek_idx = (bitreader.bit_buffer >> (bitreader.bit_count - 10)) & 0x3FF
-            var entry = self.fast_lookup[peek_idx]
+            var entry = self.fast_lookup.unsafe_get(peek_idx)
 
             if entry != 0:
                 var length = entry & 0x0F
@@ -115,6 +119,12 @@ struct HuffmanTable:
             if bitreader.bit_count == 0:
                 if found_marker:
                     return found_marker
+
+                if bitreader.restart_marker:
+                    return -2
+
+                if bitreader.early_marker:
+                    return -1
 
                 var byte = bitreader.read_byte()
                 if byte < 0:
@@ -131,7 +141,7 @@ struct HuffmanTable:
             # OPTIMIZATION: Linear search over contiguous memory replaces Dict hash lookup
             var count = len(self.fallback_keys)
             for i in range(count):
-                if self.fallback_keys[i] == key:
-                    return self.fallback_vals[i]
+                if self.fallback_keys.unsafe_get(i) == key:
+                    return self.fallback_vals.unsafe_get(i)
 
-        return -100
+        raise Error("Invalid Huffman Code")

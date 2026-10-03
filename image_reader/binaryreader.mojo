@@ -141,3 +141,19 @@ struct BinaryReader:
         var val = self.ptr.unsafe_bitcast[SIMD[type, width]]()[unsafe_offset=0]
         self.ptr = self.ptr.unsafe_offset(width * size_of[type]())
         return val
+
+    @always_inline
+    def debug_dump_bytes(mut self, bytes_read: Int):
+        var curpos = self.tell()
+        var bytes = List[UInt8]()
+
+        self.seek(curpos - bytes_read / 2)
+
+        print("Current position: ", curpos)
+
+        for _ in range(bytes_read):
+            bytes.append(self.u8_uint())
+
+        self.seek(curpos)
+
+        print("Bytes around: ", bytes)

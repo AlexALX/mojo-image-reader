@@ -23,7 +23,7 @@ def run_ycbcr_test(y: Float32, cb: Float32, cr: Float32, exp_r: Int, exp_g: Int,
     var buffer = ImageBuffer(width, height, 3, 8)
 
     # Process through the actual image drawing/conversion pipeline
-    ImageDrawer.process_image[False, False](
+    ImageDrawer.process_image[False, False, True](
         buffer, width, height,
         planes_y, planes_cb, planes_cr,
         width, height, width, height,

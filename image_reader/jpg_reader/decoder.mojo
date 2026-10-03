@@ -54,9 +54,25 @@ struct JpgDecoder:
         if self.parser.progressive:
             return self.decode_progressive_image()
         else:
-            return self.decode_baseline_image()
+            if self.parser.scan_is_single_component:
+                return self.decode_baseline_image[True]()
+            else:
+                return self.decode_baseline_image[False]()
 
-    def decode_baseline_image(mut self) raises -> ImageBuffer:
+    @always_inline
+    def comsume_restart(mut self, mut prev_dcs: List[Int]) raises:
+        self.parser.bit_reader.align()
+
+        if self.parser.bit_reader.restart_marker==0:
+            _ = self.parser.bit_reader.read_byte()
+
+        self.parser.bit_reader.restart_marker = 0
+
+        self.parser.scan_eob_run = 0
+        for i in range(len(prev_dcs)):
+            prev_dcs.unsafe_set(i, 0)
+
+    def decode_baseline_image[is_single: Bool](mut self) raises -> ImageBuffer:
         ref parser = self.parser
         var idct_processor = IDCT()
 
@@ -75,7 +91,7 @@ struct JpgDecoder:
         var comp_y_h = parser.components[1].height
         var planes_y = List[Float32](length=comp_y_w * comp_y_h, fill=0.0)
 
-        if parser.component_count>1:
+        if not is_single:
             var comp_cb_w = parser.components[2].width
             var comp_cb_h = parser.components[2].height
             planes_cb.resize(comp_cb_w * comp_cb_h, 0.0)
@@ -94,17 +110,7 @@ struct JpgDecoder:
         for mcu_idx in range(parser.mcu_count):
 
             if restart_interval > 0 and mcu_since_restart >= restart_interval:
-                self.parser.bit_reader.align()
-
-                if parser.bit_reader.restart_marker==0:
-                    _ = self.parser.bit_reader.read_byte()
-
-                parser.bit_reader.restart_marker = 0
-
-                self.parser.scan_eob_run = 0
-                for i in range(len(prev_dcs)):
-                    prev_dcs[i] = 0
-
+                self.comsume_restart(prev_dcs)
                 mcu_since_restart = 0
 
             # Iterate through components in the scan
@@ -116,9 +122,7 @@ struct JpgDecoder:
                 var dc_tbl_id = comp_info.dc_table_id
                 var ac_tbl_id = comp_info.ac_table_id
 
-                var h_factor = comp_info.h
-                var v_factor = comp_info.v
-                var blocks_per_mcu = h_factor * v_factor
+                var blocks_per_mcu = 1 if is_single else comp_info.h * comp_info.v
 
                 # Process all blocks belonging to this component within the current MCU
                 for block_num in range(blocks_per_mcu):
@@ -128,10 +132,10 @@ struct JpgDecoder:
                     )
 
                     prev_dcs[comp_id] = updated_dc
-                    raw_block[0] = Int16(updated_dc)
+                    raw_block.unsafe_set(0, Int16(updated_dc))
 
-                    for i in range(1, 64):
-                        raw_block[i] = 0
+                    comptime for i in range(1, 64):
+                        raw_block.unsafe_set(i, 0)
 
                     # 2. Decode AC coefficients using zigzag mapping
                     _ = self.decode_ac_first(
@@ -151,7 +155,7 @@ struct JpgDecoder:
                     _ = idct_processor.perform_idct(block_output, level_shift, 0.0)
 
                     # 4. Delegate plane placement back to ImageDrawer
-                    if comp_id == 1:
+                    if is_single or comp_id == 1:
                         ImageDrawer.copy_block_to_plane(
                             block_output, mcu_idx, block_num,
                             parser.components[comp_id], mcus_per_row, planes_y
@@ -179,6 +183,110 @@ struct JpgDecoder:
             planes_cb,
             planes_cr
         )
+
+    def decode_mcu_blocks[is_single: Bool](mut self) raises:
+        """
+        Decodes all blocks in the current MCU, handling both single and interleaved scans.
+        """
+        ref parser = self.parser
+
+        var ss = parser.scan_ss
+        var se = parser.scan_se
+        var ah = parser.scan_ah
+        var al = parser.scan_al
+        var is_dc = (ss == 0 and se == 0)
+
+        var prev_dcs = List[Int](length=len(parser.components), fill=0)
+
+        var scan_mcu_count = parser.scan_mcu_count
+
+        var mcu_since_restart = 0
+        var restart_interval = parser.restart_interval
+
+        # Scan loop over MCU / blocks
+        for scan_mcu in range(scan_mcu_count):
+
+            if restart_interval > 0 and mcu_since_restart >= restart_interval:
+                self.comsume_restart(prev_dcs)
+                mcu_since_restart = 0
+
+            var break_loop = False
+
+            for comp_idx in range(len(parser.frame_components)):
+                var comp_id = parser.frame_components[comp_idx]
+                ref comp_info = parser.components[comp_id]
+                var dc_tbl_id = comp_info.dc_table_id
+                var ac_tbl_id = comp_info.ac_table_id
+
+                var h_factor = comp_info.h
+                var v_factor = comp_info.v
+                var blocks_per_mcu = h_factor * v_factor
+                var comp_width = comp_info.width
+
+                var scan_blocks_per_mcu = 1 if is_single else blocks_per_mcu
+
+                for block_num in range(scan_blocks_per_mcu):
+                    var index: Int
+                    if is_single:
+                        # single component block mapping
+                        var blocks_x = (comp_width + 7) // 8
+                        var block_x = scan_mcu % blocks_x
+                        var block_y = scan_mcu // blocks_x
+
+                        var target_mcu_x = block_x // h_factor
+                        var target_mcu_y = block_y // v_factor
+                        var target_mcu = target_mcu_y * parser.mcu_x + target_mcu_x
+                        var internal_block = (block_y % v_factor) * h_factor + (block_x % h_factor)
+
+                        index = target_mcu * blocks_per_mcu + internal_block
+                    else:
+                        # Interleaved scan block mapping
+                        var block_y_in_mcu = block_num // h_factor
+                        var block_x_in_mcu = block_num % h_factor
+                        var internal_offset = block_y_in_mcu * h_factor + block_x_in_mcu
+                        index = scan_mcu * blocks_per_mcu + internal_offset
+
+                    # Ensure safe bounds
+                    if index < self.max_blocks_per_comp:
+                        var block_offset = (comp_id * self.max_blocks_per_comp + index) * 64
+                        var p_block = self.coefficients.unsafe_ptr().unsafe_offset(block_offset)
+
+                        if is_dc:
+                            if ah == 0:
+                                var updated_dc = self.decode_dc_first(dc_tbl_id, prev_dcs[comp_id])
+                                prev_dcs[comp_id] = updated_dc
+                                p_block.unsafe_store(Int16(updated_dc << al))
+                            else:
+                                self.decode_dc_refinement(parser.bit_reader, al, p_block)
+
+                        else:
+                            if ah == 0:
+                                if not self.decode_ac_first(
+                                    parser.bit_reader,
+                                    parser.scan_eob_run,
+                                    parser.huffman_ac[ac_tbl_id],
+                                    parser.zigzag_map,
+                                    ss, se, al,
+                                    p_block
+                                ):
+                                    break_loop = True
+                                    break
+                            else:
+                                if not self.decode_ac_refinement(
+                                    parser.bit_reader,
+                                    parser.scan_eob_run,
+                                    parser.huffman_ac[ac_tbl_id],
+                                    parser.zigzag_map,
+                                    ss, se, al,
+                                    p_block
+                                ):
+                                    break_loop = True
+                                    break
+
+                if break_loop:
+                    break
+
+            mcu_since_restart += 1
 
     def decode_progressive_image(mut self) raises -> ImageBuffer:
         """
@@ -212,107 +320,18 @@ struct JpgDecoder:
 
         # Multi-scan progressive processing loop
         while True:
-            var ss = parser.scan_ss
-            var se = parser.scan_se
-            var ah = parser.scan_ah
-            var al = parser.scan_al
-            var is_dc = (ss == 0 and se == 0)
-
-            var prev_dcs = List[Int](length=len(parser.components), fill=0)
 
             var is_single = parser.scan_is_single_component
-            var scan_mcu_count = parser.scan_mcu_count
+            self.parser.scan_eob_run = 0
 
-            var mcu_since_restart = 0
-            var restart_interval = parser.restart_interval
+            self.parser.bit_reader.early_marker = 0
+            self.parser.bit_reader.restart_marker = 0
+            self.parser.bit_reader.align()
 
-            # Scan loop over MCU / blocks
-            for scan_mcu in range(scan_mcu_count):
-
-                if restart_interval > 0 and mcu_since_restart >= restart_interval:
-                    self.parser.bit_reader.align()
-
-                    if parser.bit_reader.restart_marker==0:
-                        var b = self.parser.bit_reader.read_byte()
-                        while b == 0xFF:
-                            b = self.parser.bit_reader.read_byte()
-
-                    parser.bit_reader.restart_marker = 0
-
-                    self.parser.scan_eob_run = 0
-                    for i in range(len(prev_dcs)):
-                        prev_dcs[i] = 0
-
-                    mcu_since_restart = 0
-
-                for comp_idx in range(len(parser.frame_components)):
-                    var comp_id = parser.frame_components[comp_idx]
-                    ref comp_info = parser.components[comp_id]
-                    var dc_tbl_id = comp_info.dc_table_id
-                    var ac_tbl_id = comp_info.ac_table_id
-
-                    var h_factor = comp_info.h
-                    var v_factor = comp_info.v
-                    var blocks_per_mcu = h_factor * v_factor
-                    var comp_width = comp_info.width
-
-                    var scan_blocks_per_mcu = 1 if is_single else blocks_per_mcu
-
-                    for block_num in range(scan_blocks_per_mcu):
-                        var index: Int
-
-                        if is_single:
-                            # single component block mapping
-                            var blocks_x = (comp_width + 7) // 8
-                            var block_x = scan_mcu % blocks_x
-                            var block_y = scan_mcu // blocks_x
-
-                            var target_mcu_x = block_x // h_factor
-                            var target_mcu_y = block_y // v_factor
-                            var target_mcu = target_mcu_y * parser.mcu_x + target_mcu_x
-                            var internal_block = (block_y % v_factor) * h_factor + (block_x % h_factor)
-
-                            index = target_mcu * blocks_per_mcu + internal_block
-                        else:
-                            # Interleaved scan block mapping
-                            var block_y_in_mcu = block_num // h_factor
-                            var block_x_in_mcu = block_num % h_factor
-                            var internal_offset = block_y_in_mcu * h_factor + block_x_in_mcu
-                            index = scan_mcu * blocks_per_mcu + internal_offset
-
-                        # Ensure safe bounds
-                        if index < self.max_blocks_per_comp:
-                            var block_offset = (comp_id * self.max_blocks_per_comp + index) * 64
-                            var p_block = self.coefficients.unsafe_ptr().unsafe_offset(block_offset)
-
-                            if is_dc:
-                                if ah == 0:
-                                    var updated_dc = self.decode_dc_first(dc_tbl_id, prev_dcs[comp_id])
-                                    prev_dcs[comp_id] = updated_dc
-                                    p_block.unsafe_store(Int16(updated_dc << al))
-                                else:
-                                    self.decode_dc_refinement(parser.bit_reader, al, p_block)
-                            else:
-                                if ah == 0:
-                                    _ = self.decode_ac_first(
-                                        parser.bit_reader,
-                                        parser.scan_eob_run,
-                                        parser.huffman_ac[ac_tbl_id],
-                                        parser.zigzag_map,
-                                        ss, se, al,
-                                        p_block
-                                    )
-                                else:
-                                    _ = self.decode_ac_refinement(
-                                        parser.bit_reader,
-                                        parser.scan_eob_run,
-                                        parser.huffman_ac[ac_tbl_id],
-                                        parser.zigzag_map,
-                                        ss, se, al,
-                                        p_block
-                                    )
-
-                mcu_since_restart += 1
+            if is_single:
+                self.decode_mcu_blocks[True]()
+            else:
+                self.decode_mcu_blocks[False]()
 
             # Align stream after entropy scan block
             parser.bit_reader.align()
@@ -321,11 +340,13 @@ struct JpgDecoder:
             var found_nested_scan = False
             ref reader = parser.bit_reader.reader
 
+            parser.bit_reader.restart_marker = 0
+
             while not reader.is_eof():
 
                 var b: Int
 
-                if parser.bit_reader.early_marker or parser.bit_reader.restart_marker:
+                if parser.bit_reader.early_marker:
                     b = 0xFF
                 else:
                     b = reader.u8()
@@ -336,15 +357,8 @@ struct JpgDecoder:
                     if parser.bit_reader.early_marker:
                         marker = parser.bit_reader.early_marker & 0xFF
                         parser.bit_reader.early_marker = 0
-                    elif parser.bit_reader.restart_marker != 0:
-                        marker = parser.bit_reader.restart_marker
-                        parser.bit_reader.restart_marker = 0
                     else:
                         marker = reader.u8()
-
-                    # Skip padding 0xFF or 0x00 bytes
-                    if marker == 0x00 or marker == 0xFF:
-                        continue
 
                     if marker == 0xD9:
                         break
@@ -359,6 +373,8 @@ struct JpgDecoder:
                         continue # RST markers
                     elif marker == 0xC4:
                         _ = parser.jpg_parse_dht()
+                    elif marker == 0xDD:
+                        parser.jpg_parse_dri()
                     else:
                         # Skip other markers (like APPn, COM, etc.) using their segment length
                         var length = reader.u16_be()
@@ -462,7 +478,9 @@ struct JpgDecoder:
         while k <= se:
             var symbol = acht.huffman_read(bit_reader)
 
-            if symbol < 0: return False
+            if symbol < 0:
+                return False
+
             var run = symbol >> 4
             var size = symbol & 0x0F
 
@@ -475,14 +493,20 @@ struct JpgDecoder:
                     var extra = 0
                     if run > 0:
                         extra = bit_reader.bits(run)
-                        if extra < 0: return False
+                        if extra < 0:
+                            return False
+
                     scan_eob_run = (1 << run) + extra - 1
                     return True
             else:
                 k += run
-                if k > se: return False
+                if k > se:
+                    return False
+
                 var val = bit_reader.bits(size)
-                if val < 0: return False
+                if val < 0:
+                    return False
+
                 val = BitReader.extend(val, size)
                 p_block.unsafe_offset(zigzag_map[k]).unsafe_store(Int16(val << al))
                 k += 1
@@ -498,7 +522,7 @@ struct JpgDecoder:
     ) raises -> Bool:
         var block_val = p_block.unsafe_offset(zigzag_idx).unsafe_load()
 
-        if block_val == 0 or (block_val & delta) != 0:
+        if block_val == 0:
             return True
 
         var bit = bit_reader.bit()
