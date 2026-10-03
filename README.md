@@ -111,6 +111,12 @@ mojo -I . tests/jpg_reader/test_ycbcrtorgb.mojo
 mojo -I . tests/jpg_reader/test_assemble.mojo
 ```
 
+## 📊 Benchmarks & Samples
+
+For performance comparisons against Pillow, detailed benchmark results across formats (BMP, GIF, JPEG, PNG), and the full suite of test samples, check out the companion repository:
+
+👉 **[mojo-image-reader-bench](https://github.com/AlexALX/mojo-image-reader-bench)**
+
 ## 🗺️ Roadmap
 
 - [x] **Core & Exporters**
